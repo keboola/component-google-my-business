@@ -1,0 +1,5 @@
+https://bitbucket.org/kds_consulting_team/keboola-python-util-lib/get/0.2.0.zip#egg=kbc
+logging_gelf==0.0.18
+mock
+freezegun
+pandas
