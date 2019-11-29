@@ -8,11 +8,13 @@ import logging_gelf.handlers
 import logging_gelf.formatters
 import sys
 import os
-import datetime # noqa
+import datetime  # noqa
 
 from kbc.env_handler import KBCEnvHandler
-from kbc.result import KBCTableDef # noqa
-from kbc.result import ResultWriter # noqa
+from kbc.result import KBCTableDef  # noqa
+from kbc.result import ResultWriter  # noqa
+
+from google_my_business import Google_My_Business
 
 
 # configuration variables
@@ -49,6 +51,17 @@ if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
 
 APP_VERSION = '0.0.1'
 
+GOOGLE_MY_BUSINESS_SCOPES = [
+    'https://www.googleapis.com/auth/plus.business.manage',
+    'https://www.googleapis.com/auth/business.manage'
+]
+
+ACCOUNT_ID = ''
+LOCATION = ''
+ACCESS_TOKEN = ''
+BASE_URL = 'https://mybusiness.googleapis.com/v4/accounts/{}/locations/{}/reviews?access_token={}'.format(
+    ACCOUNT_ID, LOCATION, ACCESS_TOKEN)
+
 
 class Component(KBCEnvHandler):
 
@@ -73,7 +86,6 @@ class Component(KBCEnvHandler):
             logging.error(e)
             exit(1)
 
-
     def get_tables(self, tables, mapping):
         """
         Evaluate input and output table names.
@@ -86,12 +98,11 @@ class Component(KBCEnvHandler):
             name = table["full_path"]
             if mapping == "input_mapping":
                 destination = table["destination"]
-            elif mapping == "output_mapping" :
+            elif mapping == "output_mapping":
                 destination = table["source"]
             table_list.append(destination)
 
         return table_list
-
 
     def run(self):
         '''
