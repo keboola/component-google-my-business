@@ -1,0 +1,37 @@
+{
+    "local_posts": {
+
+    },
+    "locations": {
+        "name": "string",
+        "languageCode": "string",
+        "storeCode": "string",
+        "locationName": "string",
+        "address": "string",
+        "primaryCategory": "string",
+        "websiteUrl": "string",
+        "regularHours": "string",
+        "specialHours": "string",
+        "serviceArea": "string",
+        "locationKey": "string",
+        "labels": "list",
+        "adWordsLocationExtensions": "string",
+        "latlng": "string",
+        "openInfo": "string",
+        "locationState": "string",
+        "attributes": "list",
+        "metadata": "string",
+        "priceLists": "list",
+        "profile": "string",
+        "relationshipData": "string"
+    },
+    "media": {
+
+    },
+    "questions": {
+
+    },
+    "reviews": {
+
+    },
+}

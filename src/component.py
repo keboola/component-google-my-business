@@ -8,13 +8,15 @@ import logging_gelf.handlers
 import logging_gelf.formatters
 import sys
 import os
+import json
 import datetime  # noqa
+import requests
 
 from kbc.env_handler import KBCEnvHandler
 from kbc.result import KBCTableDef  # noqa
 from kbc.result import ResultWriter  # noqa
 
-from google_my_business import Google_My_Business
+from google_my_business import Google_My_Business  # noqa
 
 
 # configuration variables
@@ -86,37 +88,66 @@ class Component(KBCEnvHandler):
             logging.error(e)
             exit(1)
 
-    def get_tables(self, tables, mapping):
-        """
-        Evaluate input and output table names.
-        Only taking the first one into consideration!
-        mapping: input_mapping, output_mappings
-        """
-        # input file
-        table_list = []
-        for table in tables:
-            name = table["full_path"]
-            if mapping == "input_mapping":
-                destination = table["destination"]
-            elif mapping == "output_mapping":
-                destination = table["source"]
-            table_list.append(destination)
+    def get_oauth_token(self, config):
+        '''
+        Extracting Oauth Token out of Authorization
+        '''
+        data = config['oauth_api']['credentials']
+        data_encrypted = json.loads(config['oauth_api']['credentials']['#data'])
+        client_id = data['appKey']
+        client_secret = data['#appSecret']
+        refresh_token = data_encrypted['refresh_token']
 
-        return table_list
+        url = 'https://www.googleapis.com/oauth2/v4/token'
+        header = {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        payload = {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token,
+        }
+
+        response = requests.post(
+            url=url, headers=header, data=payload)
+
+        if response.status_code != 200:
+            logging.error(
+                "Unable to refresh access token. Please reset the account authorization.")
+            sys.exit(1)
+
+        data_r = response.json()
+        token = data_r["access_token"]
+
+        return token
 
     def run(self):
         '''
         Main execution code
         '''
-        # Get proper list of tables
-        in_tables = self.configuration.get_input_tables()
-        out_tables = self.configuration.get_expected_output_tables()
-        in_table_names = self.get_tables(in_tables, 'input_mapping')
-        out_table_names = self.get_tables(out_tables, 'output_mapping')
-        logging.info("IN tables mapped: "+str(in_table_names))
-        logging.info("OUT tables mapped: "+str(out_table_names))
 
+        # Activate when OAuth in KBC is ready
+        # Get Authorization Token
+        authorization = self.configuration.get_authorization()
+        oauth_token = self.get_oauth_token(authorization)
+
+        # Configuration Parameters
         params = self.cfg_params  # noqa
+        endpoints = params['endpoints']
+
+        # If no endpoints are selected
+        if len(endpoints) == 0:
+            logging.error('Please select an endpoint.')
+            sys.exit(1)
+
+        all_endpoints = []
+        for i in endpoints:
+            if i['endpoint'] not in all_endpoints:
+                all_endpoints.append(i['endpoint'])
+
+        gmb = Google_My_Business(access_token=oauth_token)
+        gmb.run(endpoints=all_endpoints)
 
         logging.info("Extraction finished")
 
