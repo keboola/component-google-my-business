@@ -21,7 +21,6 @@
                             "reportInsights",
                             "reviews",
                             "media",
-                            "localPosts",
                             "questions"
                         ],
                         "options": {
@@ -29,7 +28,6 @@
                                 "Location Insights",
                                 "Reviews",
                                 "Media",
-                                "Local Posts",
                                 "Questions"
                             ]
                         }
