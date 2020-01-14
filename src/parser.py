@@ -1,4 +1,4 @@
-import sys
+import sys  # noqa
 import os
 import json
 import logging
@@ -12,6 +12,9 @@ DEFAULT_TABLE_SOURCE = "/data/in/tables/"
 DEFAULT_TABLE_DESTINATION = "/data/out/tables/"
 DEFAULT_FILE_DESTINATION = "/data/out/files/"
 DEFAULT_FILE_SOURCE = "/data/in/files/"
+
+with open('src/mapping.json', 'r') as f:
+    output_columns_mapping = json.load(f)
 
 
 if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
@@ -27,30 +30,7 @@ if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
     logger.removeHandler(logger.handlers[0])
 
 
-def parse_locations(data_in):
-    '''
-    Parser for locations
-    '''
-    data_out = []
-
-    for data in data_in:
-        temp_data = {
-            'name': data['name'],
-            'languageCode': data['languageCode'],
-            'storeCode': data['storeCode'],
-            'locationName': data['locationName'],
-            'primaryPhone': data['primaryPhone'],
-            'address_region': data['address']['regionCode'],
-            'postalCode': data['address']['postalCode'],
-            'administrativeArea': data['address']['administrativeArea'],
-            'organization': data['address']['organization'],
-            'primaryCategoryName': data['primaryCategory']['displayName'],
-            'primaryCategoryId': data['primaryCategory']['categoryId'],
-            'websiteUrl': data['websiteUrl'],
-        }
-
-
-def output_file(file_name, data_in):
+def output_file(file_name, data_in, output_columns=None):
     '''
     Output dataframe to destination file
     '''
@@ -60,11 +40,11 @@ def output_file(file_name, data_in):
     df = pd.DataFrame(data_in)
     if not os.path.isfile(file_output_destination):
         with open(file_output_destination, 'a') as f:
-            df.to_csv(f, index=False)
+            df.to_csv(f, index=False, columns=output_columns_mapping.get(file_name))
         f.close()
     else:
         with open(file_output_destination, 'a') as f:
-            df.to_csv(f, index=False, header=False)
+            df.to_csv(f, index=False, header=False, columns=output_columns_mapping.get(file_name))
         f.close()
 
 
@@ -72,7 +52,9 @@ def generic_parser(data_in,
                    parent_obj_name=None,  # parent JSON property name to carry over as the filename
                    parent_col_name=None,  # Parent loop column name
                    primary_key_name=None,
-                   primary_key_value=None):
+                   primary_key_value=None
+                   # output_columns=None  # specifying what columns to output
+                   ):
     '''
     Generic Parser
     1. if type is list, it will output a new table under that JSON obj
@@ -95,12 +77,17 @@ def generic_parser(data_in,
 
             # Output Sequences
             for col in obj:
+                if col == 'priceLists' or col == 'attributes':
+                    # Skipping priceLists obj from location which causes issues with parsing
+                    # Data is not needed from this atm
+                    break
                 json_value = generic_parser(
                     data_in=obj[col],
                     parent_obj_name='{}_{}'.format(parent_obj_name, col),
                     parent_col_name=col,
                     primary_key_name=primary_key_name,
                     primary_key_value=primary_key_value
+                    # output_columns=output_columns
                 )
                 if json_value:
                     for row in json_value:
@@ -108,7 +95,7 @@ def generic_parser(data_in,
             data_out.append(temp_json_obj)
 
         if data_out:
-            output_file(file_name=parent_obj_name, data_in=data_out)
+            output_file(file_name=parent_obj_name, data_in=data_out)  # , output_columns=output_columns)
 
         return None
 
@@ -124,3 +111,57 @@ def generic_parser(data_in,
             parent_obj_name: data_in
         }
         return temp_json_obj
+
+
+def product_manifest(file_name, primary_key):
+    '''
+    Dummy function for returning manifest
+    '''
+
+    file = '{}{}.csv.manifest'.format(DEFAULT_TABLE_DESTINATION, file_name)
+
+    manifest = {
+        'incremental': True,
+        'primary_key': primary_key
+    }
+
+    try:
+        with open(file, 'w') as file_out:
+            json.dump(manifest, file_out)
+    except Exception as e:
+        logging.error("Could not produce output file manifest.")
+        logging.error(e)
+
+
+def insight_parser(data_in):
+    '''
+    Parser dedicated for fetching location metrics
+    '''
+
+    data_out = []
+    primary_key = [
+        'location',
+        'metric',
+        'date'
+    ]
+
+    for location in data_in:
+        for metric in location['metricValues']:
+            # There are cases where the metric name is missing from the API result
+            if 'metric' in metric:
+                for metric_value in metric['dimensionalValues']:
+                    if 'value' in metric_value:
+                        value = metric_value['value']
+                    else:
+                        value = '0'
+
+                    temp_json = {
+                        'location': location['locationName'],
+                        'metric': metric['metric'],
+                        'date': metric_value['timeDimension']['timeRange']['startTime'],
+                        'value': value
+                    }
+                    data_out.append(temp_json)
+
+    output_file('location_insights', data_out)
+    product_manifest('location_insights', primary_key)

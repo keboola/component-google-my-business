@@ -3,3 +3,4 @@ logging_gelf==0.0.18
 mock
 freezegun
 pandas
+regex==2019.11.1

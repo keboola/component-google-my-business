@@ -30,9 +30,20 @@ class Google_My_Business():
     Google My Business Request Handler
     '''
 
-    def __init__(self, access_token):
+    def __init__(self, access_token, start_timestamp, end_timestamp):
         self.access_token = access_token
         self.base_url = 'https://mybusiness.googleapis.com/v4'
+        self.start_timestamp = start_timestamp
+        self.end_timestamp = end_timestamp
+        # self.get_output_columns()
+
+    def get_output_columns(self):
+        '''
+        Getting all the column names from the mapping.json
+        '''
+
+        with open('src/mapping.json', 'r') as f:
+            self.output_columns = json.load(f)
 
     def get_request(self, url, headers=None, params=None):
         '''
@@ -48,7 +59,7 @@ class Google_My_Business():
         Base POST request
         '''
 
-        res = requesting.post(url=url, headers=headers, body=payload)
+        res = requesting.post(url=url, headers=headers, json=payload)
 
         return res.status_code, res
 
@@ -60,19 +71,24 @@ class Google_My_Business():
         # Accounts parameters
         out_account_list = []
         account_url = '{}/accounts'.format(self.base_url)
+
         params = {
             'access_token': self.access_token
+            # 'Authorization': 'Bearer {}'.format(self.access_token)
         }
+
         if nextPageToken:
             params['pageToken'] = nextPageToken
 
         # Get Account Lists
-        res_status, account_json = self.get_request(account_url, params=params)
+        res_status, account_raw = self.get_request(account_url, params=params)
+        logging.info(account_raw.json())
         if res_status != 200:
             logging.error('Error: Issues with fetching the list of accounts associated to the Authorized account.',
                           'Please verify if authorized account has the privileges to access Google My Business Account')
             sys.exit(1)
-        out_account_list = account_json.json()['accounts']
+        account_json = account_raw.json()
+        out_account_list = account_json['accounts']
 
         # Looping for all the accounts
         if 'nextPageToken' in account_json:
@@ -92,22 +108,24 @@ class Google_My_Business():
         params = {
             'access_token': self.access_token
         }
+        # Pagination
         if nextPageToken:
             params['pageToken'] = nextPageToken
 
         # Get Loaction Lists
-        res_status, location_json = self.get_request(
+        res_status, location_raw = self.get_request(
             location_url, params=params)
         if res_status != 200:
             logging.error(
                 'Something wrong with location request. Please investigate.')
             sys.exit(1)
+        location_json = location_raw.json()
 
         # If the account has no locations under it
         if 'locations' not in location_json:
             out_location_list = []
         else:
-            out_location_list = location_json.json()['locations']
+            out_location_list = location_json['locations']
 
         # Looping for all the locations
         if 'nextPageToken' in location_json:
@@ -122,7 +140,8 @@ class Google_My_Business():
         Fetching all the report insights from assigned location
         '''
 
-        insight_url = '{}/{}/locations:reportInsights'.format(self.base_url, account_id)
+        insight_url = '{}/{}/locations:reportInsights'.format(
+            self.base_url, account_id)
         header = {
             'Content-type': 'application/json',
             'Authorization': 'Bearer {}'.format(self.access_token)
@@ -134,36 +153,38 @@ class Google_My_Business():
             'basicRequest': {
                 'metricRequests': [
                     {
-                        'metric': 'ALL'
+                        'metric': 'ALL',
+                        'options': [
+                            'AGGREGATED_DAILY'
+                        ]
                     }
                 ],
                 'timeRange': {
-                    'startTime': '2019-12-01T00:00:00',
-                    'endTime': '2019-12-02T00:00:00'
+                    'startTime': self.start_timestamp,
+                    'endTime': self.end_timestamp
                 }
             }
         }
 
-        res_status, insights_raw = self.post_requeest(insight_url, header=header, payload=payload)
+        res_status, insights_raw = self.post_request(
+            insight_url, headers=header, payload=payload)
+
         if res_status != 200:
             logging.error(
                 'Something wrong with report insight request. Please investigate'
             )
             sys.exit(1)
-        logging.info(insights_raw.json())
-        insights_json = insights_raw.json()['metricRequests']
+        insights_json = insights_raw.json()['locationMetrics']
 
         return insights_json
 
-    # def list_location_related_info(self, account_id, location_id, endpoint, nextPageToken=None):
     def list_location_related_info(self, location_id, endpoint, nextPageToken=None):
         '''
         Fetching all the information associated to the location
         '''
 
         out_data = []
-        # generic_url = '{}/{}/{}/{}'.format(
-        #     self.base_url, account_id, location_id, endpoint)
+        
         generic_url = '{}/{}/{}'.format(self.base_url, location_id, endpoint)
         params = {
             'access_token': self.access_token
@@ -172,19 +193,22 @@ class Google_My_Business():
             params['pageToken'] = nextPageToken
 
         # Get review for the location
-        res_status, data_json = self.get_request(generic_url, params=params)
+        res_status, data_raw = self.get_request(generic_url, params=params)
         if res_status != 200:
             logging.error(
                 'Something wrong with {} request. Please investigate.'.format(endpoint))
             sys.exit(1)
-        logging.info(data_json)
+        data_json = data_raw.json()
 
         if endpoint == 'media':
-            out_data = data_json.json()['mediaItems']
+            out_data = data_json['mediaItems']
         else:
-            out_data = data_json.json()[endpoint]
+            try:
+                out_data = data_json[endpoint]
+            except Exception:
+                logging.error(data_json)
 
-        # Lopping for all the reviews
+        # Looping for all the reviews
         if 'nextPageToken' in data_json:
             out_data = out_data + \
                 self.list_location_related_info(
@@ -206,6 +230,7 @@ class Google_My_Business():
             data_in=all_accounts,
             parent_obj_name='accounts',
             primary_key_name='name'
+            # output_columns=self.output_columns['accounts']
         )
 
         # Finding all the accounts available for the authorized account
@@ -220,24 +245,26 @@ class Google_My_Business():
                 data_in=all_locations,
                 parent_obj_name='locations',
                 primary_key_name='name'
+                # output_columns=self.output_columns['locations']
             )
 
             # If there are no locations, terminating the application
             if len(all_locations) == 0:
-                logging.error('There are no location info under the authorized account.',
+                logging.error('There are no location info under the authorized account.' +
                               'Please ensure authorized account has the required privileges to access any locations.')
                 sys.exit(1)
 
             # Looping through all the locations
             for location in all_locations:
                 location_id = location['name']
+                logging.info('Parsing location [{}]...'.format(location_id))
 
                 # Looping through all the requested endpoints
                 for endpoint in endpoints:
+                    logging.info('Fetching [{}] - {}...'.format(location_id, endpoint))
                     # insights endpoint has a different request url and method
                     if endpoint != 'reportInsights':
                         data_out = self.list_location_related_info(
-                            # account_id=account_id, location_id=location_id, endpoint=endpoint)
                             location_id=location_id,
                             endpoint=endpoint)
                     else:
@@ -247,13 +274,21 @@ class Google_My_Business():
                         )
 
                     # Ensure the output data file contains data, if not output nothing
-                    if data_out:
-                        logging.info('Outputting {}...'.format(endpoint))
+                    if data_out and endpoint != 'reportInsights':
+                        # logging.info('Outputting [{}] - {}...'.format(location_id, endpoint))
                         parser.generic_parser(
                             data_in=data_out,
                             parent_obj_name=endpoint,
                             primary_key_name='name'
+                            # output_columns=self.output_columns.get(endpoint)
+                        )
+                    elif data_out and endpoint == 'reportInsights':
+                        parser.insight_parser(
+                            data_in=data_out
                         )
                     else:
                         logging.info(
                             'No [{}] found - {}'.format(endpoint, location['locationName']))
+
+        parser.product_manifest('accounts', ['name'])
+        parser.product_manifest('locations', ['name'])

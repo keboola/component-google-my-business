@@ -10,6 +10,7 @@ import sys
 import os
 import json
 import datetime  # noqa
+import dateparser
 import requests
 
 from kbc.env_handler import KBCEnvHandler
@@ -52,17 +53,6 @@ if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
     logger.removeHandler(logger.handlers[0])
 
 APP_VERSION = '0.0.1'
-
-GOOGLE_MY_BUSINESS_SCOPES = [
-    'https://www.googleapis.com/auth/plus.business.manage',
-    'https://www.googleapis.com/auth/business.manage'
-]
-
-ACCOUNT_ID = ''
-LOCATION = ''
-ACCESS_TOKEN = ''
-BASE_URL = 'https://mybusiness.googleapis.com/v4/accounts/{}/locations/{}/reviews?access_token={}'.format(
-    ACCOUNT_ID, LOCATION, ACCESS_TOKEN)
 
 
 class Component(KBCEnvHandler):
@@ -131,10 +121,28 @@ class Component(KBCEnvHandler):
         # Get Authorization Token
         authorization = self.configuration.get_authorization()
         oauth_token = self.get_oauth_token(authorization)
+        # logging.info(oauth_token)
 
         # Configuration Parameters
         params = self.cfg_params  # noqa
         endpoints = params['endpoints']
+
+        # Validating input date parameters
+        request_range = params['request_range']
+        start_date_form = dateparser.parse(request_range['start_date'])
+        end_date_form = dateparser.parse(request_range['end_date'])
+        if start_date_form == '':
+            start_date_form = '7 days ago'
+        if end_date_form == '':
+            end_date_form = 'today'
+        day_diff = (end_date_form-start_date_form).days
+        if day_diff < 0:
+            logging.error('Start Date cannot exceed End Date. Please re-enter [Request Range].')
+            sys.exit(1)
+
+        start_date_str = start_date_form.strftime('%Y-%m-%d')+'T00:00:00.000000Z'
+        end_date_str = end_date_form.strftime('%Y-%m-%d')+'T00:00:00.000000Z'
+        logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
 
         # If no endpoints are selected
         if len(endpoints) == 0:
@@ -146,7 +154,10 @@ class Component(KBCEnvHandler):
             if i['endpoint'] not in all_endpoints:
                 all_endpoints.append(i['endpoint'])
 
-        gmb = Google_My_Business(access_token=oauth_token)
+        gmb = Google_My_Business(
+            access_token=oauth_token,
+            start_timestamp=start_date_str,
+            end_timestamp=end_date_str)
         gmb.run(endpoints=all_endpoints)
 
         logging.info("Extraction finished")

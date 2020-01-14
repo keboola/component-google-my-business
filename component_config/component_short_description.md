@@ -1,1 +1,1 @@
-Testing functional sample extractor for purposes of the python component template. 
+Allows user to extract their reviews and media related information from their Google My Business location accounts
