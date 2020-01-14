@@ -83,7 +83,8 @@ class Component(KBCEnvHandler):
         Extracting Oauth Token out of Authorization
         '''
         data = config['oauth_api']['credentials']
-        data_encrypted = json.loads(config['oauth_api']['credentials']['#data'])
+        data_encrypted = json.loads(
+            config['oauth_api']['credentials']['#data'])
         client_id = data['appKey']
         client_secret = data['#appSecret']
         refresh_token = data_encrypted['refresh_token']
@@ -137,12 +138,15 @@ class Component(KBCEnvHandler):
             end_date_form = 'today'
         day_diff = (end_date_form-start_date_form).days
         if day_diff < 0:
-            logging.error('Start Date cannot exceed End Date. Please re-enter [Request Range].')
+            logging.error(
+                'Start Date cannot exceed End Date. Please re-enter [Request Range].')
             sys.exit(1)
 
-        start_date_str = start_date_form.strftime('%Y-%m-%d')+'T00:00:00.000000Z'
+        start_date_str = start_date_form.strftime(
+            '%Y-%m-%d')+'T00:00:00.000000Z'
         end_date_str = end_date_form.strftime('%Y-%m-%d')+'T00:00:00.000000Z'
-        logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
+        logging.info('Request Range: {} to {}'.format(
+            start_date_str, end_date_str))
 
         # If no endpoints are selected
         if len(endpoints) == 0:

@@ -184,7 +184,7 @@ class Google_My_Business():
         '''
 
         out_data = []
-        
+
         generic_url = '{}/{}/{}'.format(self.base_url, location_id, endpoint)
         params = {
             'access_token': self.access_token
@@ -261,7 +261,8 @@ class Google_My_Business():
 
                 # Looping through all the requested endpoints
                 for endpoint in endpoints:
-                    logging.info('Fetching [{}] - {}...'.format(location_id, endpoint))
+                    logging.info(
+                        'Fetching [{}] - {}...'.format(location_id, endpoint))
                     # insights endpoint has a different request url and method
                     if endpoint != 'reportInsights':
                         data_out = self.list_location_related_info(

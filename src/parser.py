@@ -40,11 +40,13 @@ def output_file(file_name, data_in, output_columns=None):
     df = pd.DataFrame(data_in)
     if not os.path.isfile(file_output_destination):
         with open(file_output_destination, 'a') as f:
-            df.to_csv(f, index=False, columns=output_columns_mapping.get(file_name))
+            df.to_csv(f, index=False,
+                      columns=output_columns_mapping.get(file_name))
         f.close()
     else:
         with open(file_output_destination, 'a') as f:
-            df.to_csv(f, index=False, header=False, columns=output_columns_mapping.get(file_name))
+            df.to_csv(f, index=False, header=False,
+                      columns=output_columns_mapping.get(file_name))
         f.close()
 
 
@@ -95,7 +97,8 @@ def generic_parser(data_in,
             data_out.append(temp_json_obj)
 
         if data_out:
-            output_file(file_name=parent_obj_name, data_in=data_out)  # , output_columns=output_columns)
+            # , output_columns=output_columns)
+            output_file(file_name=parent_obj_name, data_in=data_out)
 
         return None
 
