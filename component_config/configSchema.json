@@ -53,9 +53,9 @@
                 "start_date": {
                     "type": "string",
                     "title": "Start Date",
-                    "default": "-7 day",
+                    "default": "7 days ago",
                     "propertyOrder": 100,
-                    "description": "default: -7 days"
+                    "description": "default: 7 days ago"
                 },
                 "end_date": {
                     "type": "string",
