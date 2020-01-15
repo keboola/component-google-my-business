@@ -6,8 +6,6 @@
 
 ### Account Authorization
 
-To avoid automatically login to any Gmail accounts available in your browser, please authorize the extractor via 'Incognito' mode/ 'private' mode.
-
 If you are using your personal Google Account to manage locations for your business or company, please ensure your account has the access right to the locations you are interested in. For a list of Google My Business account types, please visit [account types](https://developers.google.com/my-business/content/accounts).
 
 ### Configuration

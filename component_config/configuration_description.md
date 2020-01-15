@@ -1,7 +1,3 @@
-### Account Authorization
-
-To avoid automatically login to any Gmail accounts available in your browser, please authorize the extractor via 'Incognito' mode/ 'private' mode.
-
 ### Configuration
 
 1. Endpoints
