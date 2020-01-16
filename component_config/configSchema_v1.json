@@ -8,26 +8,37 @@
     "properties": {
         "endpoints": {
             "type": "array",
-            "format": "checkbox",
+            "format": "table",
             "title": "Endpoints",
             "uniqueItems": true,
             "items": {
-                "enum": [
-                    "reportInsights",
-                    "reviews",
-                    "media",
-                    "questions"
-                ],
-                "type": "string",
-                "options": {
-                    "enum_titles": [
-                        "Location Insights",
-                        "Reviews",
-                        "Media",
-                        "Questions"
-                    ]
+                "type": "object",
+                "title": "endpoint",
+                "properties": {
+                    "endpoint": {
+                        "type": "string",
+                        "enum": [
+                            "reportInsights",
+                            "reviews",
+                            "media",
+                            "questions"
+                        ],
+                        "options": {
+                            "enum_titles": [
+                                "Location Insights",
+                                "Reviews",
+                                "Media",
+                                "Questions"
+                            ]
+                        }
+                    }
                 }
             },
+            "default": [
+                {
+                    "endpoint": "reportInsights"
+                }
+            ],
             "propertyOrder": 100
         },
         "request_range": {

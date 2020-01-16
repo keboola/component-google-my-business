@@ -153,10 +153,11 @@ class Component(KBCEnvHandler):
             logging.error('Please select an endpoint.')
             sys.exit(1)
 
-        all_endpoints = []
-        for i in endpoints:
-            if i['endpoint'] not in all_endpoints:
-                all_endpoints.append(i['endpoint'])
+        # all_endpoints = []
+        # for i in endpoints:
+        #     if i['endpoint'] not in all_endpoints:
+        #         all_endpoints.append(i['endpoint'])
+        all_endpoints = endpoints
 
         gmb = Google_My_Business(
             access_token=oauth_token,
