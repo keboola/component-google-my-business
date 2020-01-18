@@ -1,5 +1,3 @@
-# Google My Business Extractor
-
 ### API Document
 
 [Google My Business API](https://developers.google.com/my-business/reference/rest/v4/)
