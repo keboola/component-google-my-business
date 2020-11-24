@@ -106,13 +106,15 @@ def generic_parser(data_in,
         temp_json_obj = {}
         for obj in data_in:
             # new_col_name = '{}_{}'.format(parent_obj_name, obj)
-            new_col_name = f'{obj}'
+            # new_col_name = f'{obj}'
+            new_col_name = f'{parent_col_name}_{obj}'
             temp_json_obj[new_col_name] = data_in[obj]
         return temp_json_obj
 
     elif type(data_in) is str:
         temp_json_obj = {
-            parent_obj_name: data_in
+            # parent_obj_name: data_in
+            parent_col_name: data_in
         }
         return temp_json_obj
 
