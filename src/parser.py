@@ -105,7 +105,8 @@ def generic_parser(data_in,
     elif type(data_in) is dict:
         temp_json_obj = {}
         for obj in data_in:
-            new_col_name = '{}_{}'.format(parent_obj_name, obj)
+            # new_col_name = '{}_{}'.format(parent_obj_name, obj)
+            new_col_name = f'{obj}'
             temp_json_obj[new_col_name] = data_in[obj]
         return temp_json_obj
 

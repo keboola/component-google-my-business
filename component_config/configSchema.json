@@ -1,6 +1,6 @@
 {
     "type": "object",
-    "title": "Google My Business configuration",
+    "title": "Parameters",
     "required": [
         "endpoints",
         "request_range"
