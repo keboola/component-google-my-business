@@ -38,15 +38,31 @@ def output_file(file_name, data_in, output_columns=None):
     file_output_destination = '{}{}.csv'.format(
         DEFAULT_TABLE_DESTINATION, file_name)
     df = pd.DataFrame(data_in)
+    output_file_columns = output_columns_mapping.get(file_name)
+
+    # Logic to shrink column names if they are too long
+    if not output_file_columns:
+        header_columns = []
+
+        for col in df.columns:
+            while len(col) > 64:
+                col_split = col.split('_')
+                col = '_'.join(col_split[1:])
+
+            header_columns.append(col)
+    else:
+        header_columns = output_file_columns
+
+    # Output input datasets with selected columns and dedicated column names
     if not os.path.isfile(file_output_destination):
         with open(file_output_destination, 'a') as f:
             df.to_csv(f, index=False,
-                      columns=output_columns_mapping.get(file_name))
+                      columns=output_file_columns, header=header_columns)
         f.close()
     else:
         with open(file_output_destination, 'a') as f:
             df.to_csv(f, index=False, header=False,
-                      columns=output_columns_mapping.get(file_name))
+                      columns=output_file_columns, header=header_columns)
         f.close()
 
 
@@ -105,7 +121,6 @@ def generic_parser(data_in,
     elif type(data_in) is dict:
         temp_json_obj = {}
         for obj in data_in:
-            # new_col_name = '{}_{}'.format(parent_obj_name, obj)
             # new_col_name = f'{obj}'
             new_col_name = f'{parent_col_name}_{obj}'
             temp_json_obj[new_col_name] = data_in[obj]
@@ -113,13 +128,13 @@ def generic_parser(data_in,
 
     elif type(data_in) is str:
         temp_json_obj = {
-            # parent_obj_name: data_in
-            parent_col_name: data_in
+            parent_obj_name: data_in
+            # parent_col_name: data_in
         }
         return temp_json_obj
 
 
-def product_manifest(file_name, primary_key):
+def produce_manifest(file_name, primary_key):
     '''
     Dummy function for returning manifest
     '''
@@ -170,4 +185,4 @@ def insight_parser(data_in):
                     data_out.append(temp_json)
 
     output_file('location_insights', data_out)
-    product_manifest('location_insights', primary_key)
+    produce_manifest('location_insights', primary_key)
