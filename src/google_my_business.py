@@ -291,5 +291,5 @@ class Google_My_Business():
                         logging.info(
                             'No [{}] found - {}'.format(endpoint, location['locationName']))
 
-        parser.product_manifest('accounts', ['name'])
-        parser.product_manifest('locations', ['name'])
+        parser.produce_manifest('accounts', ['name'])
+        parser.produce_manifest('locations', ['name'])
