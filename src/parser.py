@@ -62,7 +62,7 @@ def output_file(file_name, data_in, output_columns=None):
     else:
         with open(file_output_destination, 'a') as f:
             df.to_csv(f, index=False, header=False,
-                      columns=output_file_columns, header=header_columns)
+                      columns=output_file_columns)
         f.close()
 
 
