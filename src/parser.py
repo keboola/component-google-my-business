@@ -81,6 +81,12 @@ def generic_parser(data_in,
     '''
 
     if type(data_in) is list:
+
+        # For cases when the data in the list is not object, but strings
+        # example: ['a', 'b', 'c']
+        if type(data_in[0]) is str:
+            return f'{data_in}'
+
         data_out = []
         for obj in data_in:
             temp_json_obj = {}
@@ -99,21 +105,28 @@ def generic_parser(data_in,
                     # Skipping priceLists obj from location which causes issues with parsing
                     # Data is not needed from this atm
                     break
-                json_value = generic_parser(
-                    data_in=obj[col],
-                    parent_obj_name='{}_{}'.format(parent_obj_name, col),
-                    parent_col_name=col,
-                    primary_key_name=primary_key_name,
-                    primary_key_value=primary_key_value
-                    # output_columns=output_columns
-                )
-                if json_value:
-                    for row in json_value:
-                        temp_json_obj[row] = json_value[row]
+
+                # For cases when the data in the list is not object, but strings
+                # example: ['a', 'b', 'c']
+                if type(obj[col]) is list and type(obj[col][0]) is str:
+                    temp_json_obj[col] = f'{obj[col]}'
+
+                else:
+                    json_value = generic_parser(
+                        data_in=obj[col],
+                        parent_obj_name='{}_{}'.format(parent_obj_name, col),
+                        parent_col_name=col,
+                        primary_key_name=primary_key_name,
+                        primary_key_value=primary_key_value
+                        # output_columns=output_columns
+                    )
+                    if json_value:
+                        for row in json_value:
+                            temp_json_obj[row] = json_value[row]
             data_out.append(temp_json_obj)
 
         if data_out:
-            # , output_columns=output_columns)
+
             output_file(file_name=parent_obj_name, data_in=data_out)
 
         return None
