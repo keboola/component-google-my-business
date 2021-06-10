@@ -174,7 +174,7 @@ class Google_My_Business():
                 'Something wrong with report insight request. Please investigate'
             )
             sys.exit(1)
-        
+
         # Conditions when the API does not return expected results
         if 'locationMetrics' in insights_raw.json():
             insights_json = insights_raw.json()['locationMetrics']
@@ -257,7 +257,8 @@ class Google_My_Business():
 
             # If there are no locations, terminating the application
             if len(all_locations) == 0:
-                logging.warning(f'There are no location info under the authorized account [{account["accountName"]}].')
+                logging.warning(
+                    f'There are no location info under the authorized account [{account["accountName"]}].')
 
             # Looping through all the locations
             for location in all_locations:
