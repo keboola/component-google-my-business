@@ -29,6 +29,12 @@ if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
     # remove default logging to stdout
     logger.removeHandler(logger.handlers[0])
 
+    disable_libraries = [
+        'pandas'
+    ]
+    for library in disable_libraries:
+        logging.getLogger(library).disabled = True
+
 
 def output_file(file_name, data_in, output_columns=None):
     '''
@@ -84,8 +90,9 @@ def generic_parser(data_in,
 
         # For cases when the data in the list is not object, but strings
         # example: ['a', 'b', 'c']
-        if type(data_in[0]) is str:
-            return f'{data_in}'
+        if len(data_in) > 0:
+            if type(data_in[0]) is str:
+                return f'{data_in}'
 
         data_out = []
         for obj in data_in:

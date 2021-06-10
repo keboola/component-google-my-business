@@ -82,7 +82,7 @@ class Google_My_Business():
 
         # Get Account Lists
         res_status, account_raw = self.get_request(account_url, params=params)
-        logging.info(account_raw.json())
+        # logging.info(account_raw.json())
         if res_status != 200:
             logging.error('Error: Issues with fetching the list of accounts associated to the Authorized account.',
                           'Please verify if authorized account has the privileges to access Google My Business Account')
@@ -174,7 +174,12 @@ class Google_My_Business():
                 'Something wrong with report insight request. Please investigate'
             )
             sys.exit(1)
-        insights_json = insights_raw.json()['locationMetrics']
+        
+        # Conditions when the API does not return expected results
+        if 'locationMetrics' in insights_raw.json():
+            insights_json = insights_raw.json()['locationMetrics']
+        else:
+            insights_json = []
 
         return insights_json
 
@@ -224,6 +229,8 @@ class Google_My_Business():
         '''
 
         all_accounts = self.list_accounts()
+        logging.info(f'Accounts found: [{len(all_accounts)}]')
+
         # Outputting all the accounts found
         logging.info('Outputting Accounts...')
         parser.generic_parser(
@@ -250,9 +257,7 @@ class Google_My_Business():
 
             # If there are no locations, terminating the application
             if len(all_locations) == 0:
-                logging.error('There are no location info under the authorized account.' +
-                              'Please ensure authorized account has the required privileges to access any locations.')
-                sys.exit(1)
+                logging.warning(f'There are no location info under the authorized account [{account["accountName"]}].')
 
             # Looping through all the locations
             for location in all_locations:
