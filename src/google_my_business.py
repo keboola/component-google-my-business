@@ -206,7 +206,8 @@ class Google_My_Business():
         data_json = data_raw.json()
 
         if endpoint == 'media':
-            out_data = data_json['mediaItems']
+            out_data = data_json['mediaItems'] if data_json.get(
+                'mediaItems') else {}
         else:
             try:
                 out_data = data_json[endpoint]
@@ -282,7 +283,7 @@ class Google_My_Business():
 
                     # Ensure the output data file contains data, if not output nothing
                     if data_out and endpoint != 'reportInsights':
-                        # logging.info('Outputting [{}] - {}...'.format(location_id, endpoint))
+                        
                         parser.generic_parser(
                             data_in=data_out,
                             parent_obj_name=endpoint,
