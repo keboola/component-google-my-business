@@ -283,7 +283,7 @@ class Google_My_Business():
 
                     # Ensure the output data file contains data, if not output nothing
                     if data_out and endpoint != 'reportInsights':
-                        
+
                         parser.generic_parser(
                             data_in=data_out,
                             parent_obj_name=endpoint,
