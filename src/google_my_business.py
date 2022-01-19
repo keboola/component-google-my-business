@@ -199,6 +199,7 @@ class Google_My_Business():
 
         # Get review for the location
         res_status, data_raw = self.get_request(generic_url, params=params)
+        logging.info(f'STATUS: {res_status}; CONTENT: {data_raw}')
         if res_status != 200:
             logging.error(
                 'Something wrong with {} request. Please investigate.'.format(endpoint))
