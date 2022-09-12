@@ -33,6 +33,7 @@ class Google_My_Business():
     def __init__(self, access_token, start_timestamp, end_timestamp):
         self.access_token = access_token
         self.base_url = 'https://mybusiness.googleapis.com/v4'
+        self.base_url_v1 = "https://mybusiness.googleapis.com/v4"
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
         # self.get_output_columns()
@@ -70,7 +71,7 @@ class Google_My_Business():
 
         # Accounts parameters
         out_account_list = []
-        account_url = '{}/accounts'.format(self.base_url)
+        account_url = '{}/accounts'.format(self.base_url_v1)
 
         params = {
             'access_token': self.access_token
