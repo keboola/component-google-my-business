@@ -82,7 +82,7 @@ class Google_My_Business():
 
         # Get Account Lists
         res_status, account_raw = self.get_request(account_url, params=params)
-        # logging.info(account_raw.json())
+        logging.info(account_raw.json())
         if res_status != 200:
             logging.error('Error: Issues with fetching the list of accounts associated to the Authorized account.',
                           'Please verify if authorized account has the privileges to access Google My Business Account')
