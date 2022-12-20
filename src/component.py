@@ -122,7 +122,7 @@ class Component(KBCEnvHandler):
         # Get Authorization Token
         authorization = self.configuration.get_authorization()
         oauth_token = self.get_oauth_token(authorization)
-        # logging.info(oauth_token)
+        logging.info(oauth_token)
 
         # Configuration Parameters
         params = self.cfg_params  # noqa
