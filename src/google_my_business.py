@@ -1,4 +1,3 @@
-import sys
 import os
 import json  # noqa
 import requests

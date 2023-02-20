@@ -21,11 +21,6 @@ KEY_ENDPOINTS = 'endpoints'
 
 MANDATORY_PARS = [KEY_ENDPOINTS, KEY_API_TOKEN]
 
-# Default Table Output Destination
-DEFAULT_TABLE_SOURCE = "/data/in/tables/"
-DEFAULT_TABLE_DESTINATION = "/data/out/tables/"
-DEFAULT_FILE_DESTINATION = "/data/out/files/"
-DEFAULT_FILE_SOURCE = "/data/in/files/"
 
 # Logging
 logging.basicConfig(
