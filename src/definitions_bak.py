@@ -4,8 +4,9 @@ mapping = {
         "accounts_name",
         "accounts_accountName",
         "accounts_type",
-        "accounts_verificationState",
-        "accounts_vettedState"
+        "accounts_state_status",
+        "accounts_state_vettedStatus",
+        "accounts_profilePhotoUrl"
     ],
     "locations": [
         "name",

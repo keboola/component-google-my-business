@@ -2,17 +2,11 @@ import os
 import json  # noqa
 import requests
 import logging
-import logging_gelf.handlers
-import logging_gelf.formatters
 import pandas as pd
 
 from definitions import mapping as output_columns_mapping
 
-
-class GMBException(Exception):
-    pass
-
-
+"""
 if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
     logger = logging.getLogger()
     logging_gelf_handler = logging_gelf.handlers.GELFTCPSocketHandler(
@@ -23,9 +17,11 @@ if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
 
     # remove default logging to stdout
     logger.removeHandler(logger.handlers[0])
+"""
 
-# Request Parameters
-requesting = requests.Session()
+
+class GMBException(Exception):
+    pass
 
 
 class GoogleMyBusiness:
@@ -43,31 +39,24 @@ class GoogleMyBusiness:
         self.default_file_source = os.path.join(data_folder_path, "in/files/")
         self.default_file_destination = os.path.join(data_folder_path, "out/files/")
 
-    def get_output_columns(self):
-        """
-        Getting all the column names from the definitions.py
-        """
+        self.session = requests.Session()
 
-        with open('src/definitions.py', 'r') as f:
-            self.output_columns = json.load(f)
-
-    @staticmethod
-    def get_request(url, headers=None, params=None):
+    def get_request(self, url, headers=None, params=None):
         """
         Base GET request
         """
 
-        res = requesting.get(url=url, headers=headers, params=params)
+        res = self.session.get(url=url, headers=headers, params=params)
 
         return res.status_code, res
 
     @staticmethod
-    def post_request(url, headers=None, payload=None):
+    def post_request(self, url, headers=None, payload=None):
         """
         Base POST request
         """
 
-        res = requesting.post(url=url, headers=headers, json=payload)
+        res = self.session.post(url=url, headers=headers, json=payload)
 
         return res.status_code, res
 
@@ -75,9 +64,6 @@ class GoogleMyBusiness:
         """
         Fetching all the accounts available in the authorized Google account
         """
-
-        # Accounts parameters
-        out_account_list = []
         account_url = '{}/accounts'.format(self.base_url_v1)
 
         params = {
@@ -110,9 +96,11 @@ class GoogleMyBusiness:
         """
         Fetching all locations associated to the account_id
         """
+        # TODO: THIS ENDPOINT DOES NOT EXIST ANYMORE
 
-        out_location_list = []
         location_url = '{}/{}/locations'.format(self.base_url, account_id)
+        print(location_url)
+        exit()
         params = {
             'access_token': self.access_token
         }
@@ -122,7 +110,7 @@ class GoogleMyBusiness:
         res_status, location_raw = self.get_request(
             location_url, params=params)
         if res_status != 200:
-            raise GMBException(f'Something wrong with location request. Response: {location_raw}')
+            raise GMBException(f'Something wrong with location request. Response: {location_raw.text}')
         location_json = location_raw.json()
 
         # If the account has no locations under it
@@ -228,6 +216,7 @@ class GoogleMyBusiness:
         if endpoints is None:
             endpoints = []
         all_accounts = self.list_accounts()
+        print(all_accounts)
         logging.info(f'Accounts found: [{len(all_accounts)}]')
 
         # Outputting all the accounts found
@@ -321,6 +310,9 @@ class GoogleMyBusiness:
                 header_columns.append(col)
         else:
             header_columns = output_file_columns
+
+        print(df.columns)
+        print(output_file_columns)
 
         # Output input datasets with selected columns and dedicated column names
         if not os.path.isfile(file_output_destination):

@@ -46,7 +46,41 @@ class Component(ComponentBase):
     def __init__(self):
         super().__init__()
 
-    def get_oauth_token(self, config):
+    def run(self):
+        """
+        Main execution code
+        """
+        params = self.configuration.parameters
+
+        authorization = self.configuration.config_data["authorization"]
+        oauth_token = self.get_oauth_token(authorization)
+
+        endpoints = params['endpoints']
+        if not endpoints:
+            raise UserException('Please select an endpoint.')
+
+        # Validating input date parameters
+        start_date_str = params['request_range'].get('start_date', '7 days ago')
+        end_date_str = params['request_range'].get('end_date', 'today')
+        start_date_form = dateparser.parse(start_date_str)
+        end_date_form = dateparser.parse(end_date_str)
+        if start_date_form > end_date_form:
+            raise UserException('Start Date cannot exceed End Date. Please re-enter [Request Range].')
+        start_date_str = start_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
+        end_date_str = end_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
+        logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
+
+        gmb = GoogleMyBusiness(
+            access_token=oauth_token,
+            start_timestamp=start_date_str,
+            end_timestamp=end_date_str,
+            data_folder_path=self.data_folder_path)
+        gmb.run(endpoints=endpoints)
+
+        logging.info("Extraction finished")
+
+    @staticmethod
+    def get_oauth_token(config):
         data = config['oauth_api']['credentials']
         data_encrypted = json.loads(
             config['oauth_api']['credentials']['#data'])
@@ -69,64 +103,11 @@ class Component(ComponentBase):
             url=url, headers=header, data=payload)
 
         if response.status_code != 200:
-            logging.error(f"Unable to refresh access token. Please reset the account authorization: {response.text}")
-            sys.exit(1)
+            raise UserException(f"Unable to refresh access token. "
+                                f"Please reset the account authorization: {response.text}")
 
         data_r = response.json()
-        token = data_r["access_token"]
-
-        return token
-
-    def run(self):
-        '''
-        Main execution code
-        '''
-        params = self.configuration.parameters
-
-        authorization = self.configuration.config_data["authorization"]
-        oauth_token = self.get_oauth_token(authorization)
-
-        endpoints = params['endpoints']
-
-        # Validating input date parameters
-        request_range = params['request_range']
-        start_date_form = dateparser.parse(request_range['start_date'])
-        end_date_form = dateparser.parse(request_range['end_date'])
-        if start_date_form == '':
-            start_date_form = '7 days ago'
-        if end_date_form == '':
-            end_date_form = 'today'
-        day_diff = (end_date_form-start_date_form).days
-        if day_diff < 0:
-            logging.error(
-                'Start Date cannot exceed End Date. Please re-enter [Request Range].')
-            sys.exit(1)
-
-        start_date_str = start_date_form.strftime(
-            '%Y-%m-%d')+'T00:00:00.000000Z'
-        end_date_str = end_date_form.strftime('%Y-%m-%d')+'T00:00:00.000000Z'
-        logging.info('Request Range: {} to {}'.format(
-            start_date_str, end_date_str))
-
-        # If no endpoints are selected
-        if len(endpoints) == 0:
-            logging.error('Please select an endpoint.')
-            sys.exit(1)
-
-        # all_endpoints = []
-        # for i in endpoints:
-        #     if i['endpoint'] not in all_endpoints:
-        #         all_endpoints.append(i['endpoint'])
-        all_endpoints = endpoints
-
-        gmb = GoogleMyBusiness(
-            access_token=oauth_token,
-            start_timestamp=start_date_str,
-            end_timestamp=end_date_str,
-            data_folder_path=self.data_folder_path)
-        gmb.run(endpoints=all_endpoints)
-
-        logging.info("Extraction finished")
+        return data_r["access_token"]
 
 
 """
