@@ -1,8 +1,3 @@
-'''
-Template Component main class.
-
-'''
-
 import logging
 import logging_gelf.handlers
 import logging_gelf.formatters
@@ -13,9 +8,8 @@ import datetime  # noqa
 import dateparser
 import requests
 
-from kbc.env_handler import KBCEnvHandler
-from kbc.result import KBCTableDef  # noqa
-from kbc.result import ResultWriter  # noqa
+from keboola.component.base import ComponentBase
+from keboola.component.exceptions import UserException
 
 from google_my_business import Google_My_Business  # noqa
 
@@ -26,7 +20,6 @@ KEY_PERIOD_FROM = 'period_from'
 KEY_ENDPOINTS = 'endpoints'
 
 MANDATORY_PARS = [KEY_ENDPOINTS, KEY_API_TOKEN]
-MANDATORY_IMAGE_PARS = []
 
 # Default Table Output Destination
 DEFAULT_TABLE_SOURCE = "/data/in/tables/"
@@ -52,36 +45,13 @@ if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
     # remove default logging to stdout
     logger.removeHandler(logger.handlers[0])
 
-APP_VERSION = '0.0.7'
 
+class Component(ComponentBase):
 
-class Component(KBCEnvHandler):
-
-    def __init__(self, debug=False):
-        KBCEnvHandler.__init__(self, MANDATORY_PARS)
-        """
-        # override debug from config
-        if self.cfg_params.get('debug'):
-            debug = True
-        else:
-            debug = False
-
-        self.set_default_logger('DEBUG' if debug else 'INFO')
-        """
-        logging.info('Running version %s', APP_VERSION)
-        logging.info('Loading configuration...')
-
-        try:
-            self.validate_config()
-            self.validate_image_parameters(MANDATORY_IMAGE_PARS)
-        except ValueError as e:
-            logging.error(e)
-            exit(1)
+    def __init__(self):
+        super().__init__()
 
     def get_oauth_token(self, config):
-        '''
-        Extracting Oauth Token out of Authorization
-        '''
         data = config['oauth_api']['credentials']
         data_encrypted = json.loads(
             config['oauth_api']['credentials']['#data'])
@@ -104,8 +74,7 @@ class Component(KBCEnvHandler):
             url=url, headers=header, data=payload)
 
         if response.status_code != 200:
-            logging.error(
-                "Unable to refresh access token. Please reset the account authorization.")
+            logging.error(f"Unable to refresh access token. Please reset the account authorization: {response.text}")
             sys.exit(1)
 
         data_r = response.json()
@@ -117,14 +86,11 @@ class Component(KBCEnvHandler):
         '''
         Main execution code
         '''
+        params = self.configuration.parameters
 
-        # Activate when OAuth in KBC is ready
-        # Get Authorization Token
-        authorization = self.configuration.get_authorization()
+        authorization = self.configuration.config_data["authorization"]
         oauth_token = self.get_oauth_token(authorization)
 
-        # Configuration Parameters
-        params = self.cfg_params  # noqa
         endpoints = params['endpoints']
 
         # Validating input date parameters
@@ -171,9 +137,13 @@ class Component(KBCEnvHandler):
         Main entrypoint
 """
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        debug = sys.argv[1]
-    else:
-        debug = True
-    comp = Component(debug)
-    comp.run()
+    try:
+        comp = Component()
+        # this triggers the run method by default and is controlled by the configuration.action parameter
+        comp.execute_action()
+    except UserException as exc:
+        logging.exception(exc)
+        exit(1)
+    except Exception as exc:
+        logging.exception(exc)
+        exit(2)

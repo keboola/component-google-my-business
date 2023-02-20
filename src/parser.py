@@ -6,6 +6,8 @@ import logging_gelf.handlers
 import logging_gelf.formatters
 import pandas as pd
 
+from definitions import mapping
+
 
 # Default Table Output Destination
 DEFAULT_TABLE_SOURCE = "/data/in/tables/"
@@ -13,8 +15,8 @@ DEFAULT_TABLE_DESTINATION = "/data/out/tables/"
 DEFAULT_FILE_DESTINATION = "/data/out/files/"
 DEFAULT_FILE_SOURCE = "/data/in/files/"
 
-with open('src/mapping.json', 'r') as f:
-    output_columns_mapping = json.load(f)
+
+output_columns_mapping = mapping
 
 
 if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:

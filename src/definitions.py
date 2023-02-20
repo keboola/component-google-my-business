@@ -1,4 +1,4 @@
-{
+mapping = {
     "accounts": [
         "name",
         "accounts_name",

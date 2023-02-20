@@ -40,10 +40,10 @@ class Google_My_Business():
 
     def get_output_columns(self):
         '''
-        Getting all the column names from the mapping.json
+        Getting all the column names from the definitions.py
         '''
 
-        with open('src/mapping.json', 'r') as f:
+        with open('src/definitions.py', 'r') as f:
             self.output_columns = json.load(f)
 
     def get_request(self, url, headers=None, params=None):
