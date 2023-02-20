@@ -11,7 +11,7 @@ import requests
 from keboola.component.base import ComponentBase
 from keboola.component.exceptions import UserException
 
-from google_my_business import Google_My_Business  # noqa
+from google_my_business import GoogleMyBusiness
 
 
 # configuration variables
@@ -124,10 +124,11 @@ class Component(ComponentBase):
         #         all_endpoints.append(i['endpoint'])
         all_endpoints = endpoints
 
-        gmb = Google_My_Business(
+        gmb = GoogleMyBusiness(
             access_token=oauth_token,
             start_timestamp=start_date_str,
-            end_timestamp=end_date_str)
+            end_timestamp=end_date_str,
+            data_folder_path=self.data_folder_path)
         gmb.run(endpoints=all_endpoints)
 
         logging.info("Extraction finished")
