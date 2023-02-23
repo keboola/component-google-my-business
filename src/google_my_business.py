@@ -41,6 +41,81 @@ class GoogleMyBusiness:
 
         self.session = requests.Session()
 
+    def run(self, endpoints=None):
+
+        if endpoints is None:
+            endpoints = []
+        all_accounts = self.list_accounts()
+        logging.info(f'Accounts found: [{len(all_accounts)}]')
+
+        # Outputting all the accounts found
+        logging.info('Outputting Accounts...')
+        self.generic_parser(
+            data_in=all_accounts,
+            parent_obj_name='accounts',
+            primary_key_name='name'
+            # output_columns=self.output_columns['accounts']
+        )
+
+        # Finding all the accounts available for the authorized account
+        for account in all_accounts:
+            account_id = account['name']
+            # Fetching all the locations available for the entered account
+            all_locations = self.list_locations(account_id=account_id)
+            logging.info('Locations found in Account [{}] - [{}]'.format(
+                account['accountName'], len(all_locations)))
+            logging.info('Outputting Locations...')
+            self.generic_parser(
+                data_in=all_locations,
+                parent_obj_name='locations',
+                primary_key_name='name'
+            )
+
+            # If there are no locations, terminating the application
+            if len(all_locations) == 0:
+                logging.warning(
+                    f'There are no location info under the authorized account [{account["accountName"]}].')
+
+            # Looping through all the locations
+            for location in all_locations:
+                location_id = location['name']
+                logging.info('Parsing location [{}]...'.format(location_id))
+
+                # Looping through all the requested endpoints
+                for endpoint in endpoints:
+                    logging.info(
+                        'Fetching [{}] - {}...'.format(location_id, endpoint))
+                    # insights endpoint has a different request url and method
+                    if endpoint != 'reportInsights':
+                        data_out = self.list_location_related_info(
+                            location_id=location_id,
+                            endpoint=endpoint)
+                    else:
+                        data_out = self.list_report_insights(
+                            account_id=account_id,
+                            location_id=location_id
+                        )
+
+                    # Ensure the output data file contains data, if not output nothing
+                    if data_out and endpoint != 'reportInsights':
+
+                        self.generic_parser(
+                            data_in=data_out,
+                            parent_obj_name=endpoint,
+                            primary_key_name='name'
+                            # output_columns=self.output_columns.get(endpoint)
+                        )
+                    elif data_out and endpoint == 'reportInsights':
+                        self.insight_parser(
+                            data_in=data_out
+                        )
+                    else:
+                        logging.info(
+                            'No [{}] found - {}'.format(endpoint, location['locationName']))
+
+        self.produce_manifest('accounts', ['name'])
+        self.produce_manifest('locations', ['name'])
+
     def get_request(self, url, headers=None, params=None):
         """
         Base GET request
@@ -76,7 +151,6 @@ class GoogleMyBusiness:
 
         # Get Account Lists
         res_status, account_raw = self.get_request(account_url, params=params)
-        logging.info(account_raw.content)
         if res_status != 200:
             raise GMBException('Error: Issues with fetching the list of accounts associated to the Authorized account.',
                                'Please verify if authorized account has the privileges '
@@ -96,13 +170,12 @@ class GoogleMyBusiness:
         """
         Fetching all locations associated to the account_id
         """
-        # TODO: THIS ENDPOINT DOES NOT EXIST ANYMORE
 
-        location_url = '{}/{}/locations'.format(self.base_url, account_id)
-        print(location_url)
-        exit()
+        location_url = '{}/{}/locations'.format(self.base_url_v1, account_id)
         params = {
-            'access_token': self.access_token
+            'access_token': self.access_token,
+            'readMask': 'name,languageCode,storeCode,title,phoneNumbers,categories,storefrontAddress,websiteUri,'
+                        'regularHours,specialHours,serviceArea,latlng,openInfo,metadata,profile,relationshipData'
         }
         if nextPageToken:
             params['pageToken'] = nextPageToken
@@ -211,82 +284,6 @@ class GoogleMyBusiness:
 
         return out_data
 
-    def run(self, endpoints=None):
-
-        if endpoints is None:
-            endpoints = []
-        all_accounts = self.list_accounts()
-        print(all_accounts)
-        logging.info(f'Accounts found: [{len(all_accounts)}]')
-
-        # Outputting all the accounts found
-        logging.info('Outputting Accounts...')
-        self.generic_parser(
-            data_in=all_accounts,
-            parent_obj_name='accounts',
-            primary_key_name='name'
-            # output_columns=self.output_columns['accounts']
-        )
-
-        # Finding all the accounts available for the authorized account
-        for account in all_accounts:
-            account_id = account['name']
-            # Fetching all the locations available for the entered account
-            all_locations = self.list_locations(account_id=account_id)
-            logging.info('Locations found in Account [{}] - [{}]'.format(
-                account['accountName'], len(all_locations)))
-            logging.info('Outputting Locations...')
-            self.generic_parser(
-                data_in=all_locations,
-                parent_obj_name='locations',
-                primary_key_name='name'
-            )
-
-            # If there are no locations, terminating the application
-            if len(all_locations) == 0:
-                logging.warning(
-                    f'There are no location info under the authorized account [{account["accountName"]}].')
-
-            # Looping through all the locations
-            for location in all_locations:
-                location_id = location['name']
-                logging.info('Parsing location [{}]...'.format(location_id))
-
-                # Looping through all the requested endpoints
-                for endpoint in endpoints:
-                    logging.info(
-                        'Fetching [{}] - {}...'.format(location_id, endpoint))
-                    # insights endpoint has a different request url and method
-                    if endpoint != 'reportInsights':
-                        data_out = self.list_location_related_info(
-                            location_id=location_id,
-                            endpoint=endpoint)
-                    else:
-                        data_out = self.list_report_insights(
-                            account_id=account_id,
-                            location_id=location_id
-                        )
-
-                    # Ensure the output data file contains data, if not output nothing
-                    if data_out and endpoint != 'reportInsights':
-
-                        self.generic_parser(
-                            data_in=data_out,
-                            parent_obj_name=endpoint,
-                            primary_key_name='name'
-                            # output_columns=self.output_columns.get(endpoint)
-                        )
-                    elif data_out and endpoint == 'reportInsights':
-                        self.insight_parser(
-                            data_in=data_out
-                        )
-                    else:
-                        logging.info(
-                            'No [{}] found - {}'.format(endpoint, location['locationName']))
-
-        self.produce_manifest('accounts', ['name'])
-        self.produce_manifest('locations', ['name'])
-
     def output_file(self, file_name, data_in, output_columns=None):
         """
         Output dataframe to destination file
@@ -296,6 +293,7 @@ class GoogleMyBusiness:
             self.default_table_destination, file_name)
 
         df = pd.DataFrame(data_in)
+        print(df.columns)
         output_file_columns = output_columns_mapping.get(file_name)
 
         # Logic to shrink column names if they are too long
@@ -310,9 +308,6 @@ class GoogleMyBusiness:
                 header_columns.append(col)
         else:
             header_columns = output_file_columns
-
-        print(df.columns)
-        print(output_file_columns)
 
         # Output input datasets with selected columns and dedicated column names
         if not os.path.isfile(file_output_destination):
