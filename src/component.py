@@ -1,7 +1,6 @@
 import logging
 import logging_gelf.handlers
 import logging_gelf.formatters
-import sys
 import os
 import json
 import datetime  # noqa
