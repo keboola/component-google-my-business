@@ -55,6 +55,7 @@ class Component(ComponentBase):
         oauth_token = self.get_oauth_token(authorization)
 
         endpoints = params['endpoints']
+        logging.info(f"Component will process following endpoints: {endpoints}")
         if not endpoints:
             raise UserException('Please select an endpoint.')
 
