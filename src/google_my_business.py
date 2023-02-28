@@ -262,6 +262,7 @@ class GoogleMyBusiness:
         # Get review for the location
         res_status, data_raw = self.get_request(generic_url, params=params)
         if res_status != 200:
+            print(data_raw.text)
             raise GMBException(f'Something wrong with request. Response: {data_raw}')
         data_json = data_raw.json()
 
