@@ -4,5 +4,5 @@ mapping = {
     "reviews": ["reviewId"],
     "media": [],
     "questions": ["name"],
-    "daily_metrics": ["locationId", "metric", 'date']
+    "daily_metrics": ["location_id", "metric", 'date']
 }
