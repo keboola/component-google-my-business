@@ -28,23 +28,46 @@ def get_date_from_string(date_string):
     return year, month, day
 
 
-def flatten_dict(d):
+def flatten_dict(d, max_key_length=64):
     flat_dict = {}
     for key, value in d.items():
         if isinstance(value, dict):
-            sub_dict = flatten_dict(value)
+            sub_dict = flatten_dict(value, max_key_length)
             for sub_key, sub_value in sub_dict.items():
-                flat_dict[f"{key}_{sub_key}"] = sub_value
+                full_key = f"{key}_{sub_key}"
+                if len(full_key) > max_key_length:
+                    # Truncate key if it's too long
+                    truncated_key = full_key[:max_key_length]
+                    flat_dict[truncated_key] = sub_value
+                else:
+                    flat_dict[full_key] = sub_value
         elif isinstance(value, list):
             for i, item in enumerate(value):
                 if isinstance(item, dict):
-                    sub_dict = flatten_dict(item)
+                    sub_dict = flatten_dict(item, max_key_length)
                     for sub_key, sub_value in sub_dict.items():
-                        flat_dict[f"{key}_{i}_{sub_key}"] = sub_value
+                        full_key = f"{key}_{i}_{sub_key}"
+                        if len(full_key) > max_key_length:
+                            # Truncate key if it's too long
+                            truncated_key = full_key[:max_key_length]
+                            flat_dict[truncated_key] = sub_value
+                        else:
+                            flat_dict[full_key] = sub_value
                 else:
-                    flat_dict[f"{key}_{i}"] = item
+                    full_key = f"{key}_{i}"
+                    if len(full_key) > max_key_length:
+                        # Truncate key if it's too long
+                        truncated_key = full_key[:max_key_length]
+                        flat_dict[truncated_key] = item
+                    else:
+                        flat_dict[full_key] = item
         else:
-            flat_dict[key] = value
+            if len(key) > max_key_length:
+                # Truncate key if it's too long
+                truncated_key = key[:max_key_length]
+                flat_dict[truncated_key] = value
+            else:
+                flat_dict[key] = value
     return flat_dict
 
 
@@ -85,9 +108,9 @@ class GoogleMyBusiness:
 
         # Outputting all the accounts found
         logging.info('Outputting Accounts...')
-        self.generic_parser(
+        self.output_file(
             data_in=all_accounts,
-            endpoint='accounts'
+            file_name='accounts'
         )
 
         # Finding all the accounts available for the authorized account
@@ -98,9 +121,9 @@ class GoogleMyBusiness:
             logging.info('Locations found in Account [{}] - [{}]'.format(
                 account['accountName'], len(all_locations)))
             logging.info('Outputting Locations...')
-            self.generic_parser(
+            self.output_file(
                 data_in=all_locations,
-                endpoint='locations'
+                file_name='locations'
             )
 
             # If there are no locations, terminating the application
