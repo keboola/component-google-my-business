@@ -372,13 +372,15 @@ class GoogleMyBusiness:
         file_output_destination = '{}{}.csv'.format(
             self.default_table_destination, file_name)
 
-        # Output input datasets with selected columns and dedicated column names
-        with ElasticDictWriter(file_output_destination, []) as wr:
-            wr.writeheader()
-            for row in data_in:
-                wr.writerow(flatten_dict(row))
+        if data_in:
+            with ElasticDictWriter(file_output_destination, []) as wr:
+                wr.writeheader()
+                for row in data_in:
+                    wr.writerow(flatten_dict(row))
 
-        self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
+            self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
+        else:
+            logging.warning(f"File {file_name} is empty. Results will not be stored.")
 
     def generic_parser(self, data_in, endpoint):
         self.output_file(file_name=endpoint, data_in=data_in)
