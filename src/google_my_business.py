@@ -1,12 +1,12 @@
 import os
-import json  # noqa
+import json
 import requests
 import logging
 from datetime import datetime
 
 from keboola.csvwriter import ElasticDictWriter
 
-from definitions import mapping as output_columns_mapping
+from definitions import mapping
 
 AVAILABLE_DAILY_METRICS = ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
                            "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
@@ -26,6 +26,26 @@ def get_date_from_string(date_string):
     month = date_object.month
     day = date_object.day
     return year, month, day
+
+
+def flatten_dict(d):
+    flat_dict = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            sub_dict = flatten_dict(value)
+            for sub_key, sub_value in sub_dict.items():
+                flat_dict[f"{key}_{sub_key}"] = sub_value
+        elif isinstance(value, list):
+            for i, item in enumerate(value):
+                if isinstance(item, dict):
+                    sub_dict = flatten_dict(item)
+                    for sub_key, sub_value in sub_dict.items():
+                        flat_dict[f"{key}_{i}_{sub_key}"] = sub_value
+                else:
+                    flat_dict[f"{key}_{i}"] = item
+        else:
+            flat_dict[key] = value
+    return flat_dict
 
 
 class GMBException(Exception):
@@ -85,8 +105,8 @@ class GoogleMyBusiness:
 
             # If there are no locations, terminating the application
             if len(all_locations) == 0:
-                logging.warning(
-                    f'There are no location info under the authorized account [{account["accountName"]}].')
+                raise GMBException(f'There are no location info under the authorized '
+                                   f'account [{account["accountName"]}].')
 
             # Looping through all the locations and endpoints
             if 'dailyMetrics' in endpoints:
@@ -114,7 +134,7 @@ class GoogleMyBusiness:
                 for location in all_locations:
                     location_path = location['name']
                     location_title = location['title']
-                    logging.info(f"Processing questions for {location_title}.")
+                    logging.info(f"Processing media for {location_title}.")
                     media = self.list_media(location_id=location_path, account_id=account_id)
                     for medium in media:
                         self.questions.append(medium)
@@ -131,9 +151,6 @@ class GoogleMyBusiness:
                         self.questions.append(question)
                 self.generic_parser(data_in=self.questions, endpoint="questions")
             self.questions = []
-
-        self.produce_manifest('accounts', ['name'])
-        self.produce_manifest('locations', ['name'])
 
     def get_request(self, url, headers=None, params=None):
         """
@@ -293,7 +310,6 @@ class GoogleMyBusiness:
         responses = []
 
         url = self.base_url_quanda + "/" + location_id + "/questions"
-        print(url)
 
         params = {
             'access_token': self.access_token
@@ -306,12 +322,14 @@ class GoogleMyBusiness:
         if res_status != 200:
             raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
         data_json = data_raw.json()
-        responses.extend(data_json['questions'])
-
-        if 'nextPageToken' in data_json:
-            responses.extend(self.list_questions(
-                location_id=location_id,
-                nextPageToken=data_json['nextPageToken']))
+        if data_json:
+            responses.extend(data_json['questions'])
+            if 'nextPageToken' in data_json:
+                responses.extend(self.list_questions(
+                    location_id=location_id,
+                    nextPageToken=data_json['nextPageToken']))
+        else:
+            logging.info(f"There are no media for {location_id}")
 
         return responses
 
@@ -336,31 +354,30 @@ class GoogleMyBusiness:
         data_json = data_raw.json()
         if data_json:
             responses.extend(data_json['mediaItems'])
-
             if 'nextPageToken' in data_json:
                 responses.extend(self.list_media(
                     location_id=location_id,
                     account_id=account_id,
                     nextPageToken=data_json['nextPageToken']))
+        else:
+            logging.info(f"There are no media for {location_id}")
 
         return responses
 
     def output_file(self, file_name, data_in):
         """
-        Saves data to csv file
+        Saves data to csv file and produces manifest.
         """
         file_output_destination = '{}{}.csv'.format(
             self.default_table_destination, file_name)
 
-        if output_columns_mapping.get(file_name):
-            output_file_columns = output_columns_mapping.get(file_name)
-        else:
-            output_file_columns = []
-
         # Output input datasets with selected columns and dedicated column names
-        with ElasticDictWriter(file_output_destination, output_file_columns) as wr:
+        with ElasticDictWriter(file_output_destination, []) as wr:
             wr.writeheader()
-            wr.writerows(data_in)
+            for row in data_in:
+                wr.writerow(flatten_dict(row))
+
+        self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
 
     def generic_parser(self, data_in, endpoint):
         self.output_file(file_name=endpoint, data_in=data_in)
@@ -390,12 +407,6 @@ class GoogleMyBusiness:
         """
 
         data_out = []
-        primary_key = [
-            'location_id',
-            'date',
-            'metric'
-        ]
-
         for location_id, date_data in data_in.items():
             for date, metrics in date_data.items():
                 for metric, value in metrics.items():
@@ -407,4 +418,3 @@ class GoogleMyBusiness:
                     })
 
         self.output_file('daily_metrics', data_out)
-        self.produce_manifest('daily_metrics', primary_key)
