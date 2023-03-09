@@ -127,7 +127,7 @@ class GoogleMyBusiness:
                     reviews = self.list_reviews(account_id=account_id, location_id=location_path)
                     for review in reviews:
                         self.reviews.append(review)
-                self.generic_parser(data_in=self.reviews, endpoint="reviews")
+                self.output_file(data_in=self.reviews, file_name="reviews")
             self.reviews = []
 
             if 'media' in endpoints:
@@ -138,7 +138,7 @@ class GoogleMyBusiness:
                     media = self.list_media(location_id=location_path, account_id=account_id)
                     for medium in media:
                         self.questions.append(medium)
-                self.generic_parser(data_in=self.media, endpoint="media")
+                self.output_file(data_in=self.media, file_name="media")
             self.questions = []
 
             if 'questions' in endpoints:
@@ -149,7 +149,7 @@ class GoogleMyBusiness:
                     questions = self.list_questions(location_id=location_path)
                     for question in questions:
                         self.questions.append(question)
-                self.generic_parser(data_in=self.questions, endpoint="questions")
+                self.output_file(file_name="questions", data_in=self.questions)
             self.questions = []
 
     def get_request(self, url, headers=None, params=None):
@@ -381,9 +381,6 @@ class GoogleMyBusiness:
             self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
         else:
             logging.warning(f"File {file_name} is empty. Results will not be stored.")
-
-    def generic_parser(self, data_in, endpoint):
-        self.output_file(file_name=endpoint, data_in=data_in)
 
     def produce_manifest(self, file_name, primary_key):
         """
