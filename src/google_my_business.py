@@ -76,7 +76,9 @@ class GMBException(Exception):
 
 
 class GoogleMyBusiness:
-    def __init__(self, access_token, start_timestamp, end_timestamp, data_folder_path):
+    def __init__(self, access_token, start_timestamp, end_timestamp, data_folder_path, default_columns=None):
+        if default_columns is None:
+            default_columns = []
         self.output_columns = None
         self.access_token = access_token
         self.base_url = 'https://mybusiness.googleapis.com/v4'
@@ -98,6 +100,8 @@ class GoogleMyBusiness:
         self.questions = []
         self.media = []
         self.daily_metrics = {}
+
+        self.tables_columns = default_columns if default_columns else {}
 
     def run(self, endpoints=None):
 
@@ -386,13 +390,19 @@ class GoogleMyBusiness:
         file_output_destination = '{}{}.csv'.format(
             self.default_table_destination, file_name)
 
+        if self.tables_columns.get(file_name, {}):
+            fieldnames = self.tables_columns.get(file_name)
+        else:
+            fieldnames = []
+
         if data_in:
-            with ElasticDictWriter(file_output_destination, []) as wr:
+            with ElasticDictWriter(file_output_destination, fieldnames) as wr:
                 wr.writeheader()
                 for row in data_in:
                     wr.writerow(flatten_dict(row))
 
             self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
+            self.tables_columns[file_name] = wr.fieldnames
         else:
             logging.warning(f"File {file_name} is empty. Results will not be stored.")
 

@@ -70,12 +70,22 @@ class Component(ComponentBase):
         end_date_str = end_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
         logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
 
+        statefile = self.get_state_file()
+        if statefile:
+            default_columns = statefile
+            logging.info(f"Columns loaded from statefile: {default_columns}")
+        else:
+            default_columns = []
+
         gmb = GoogleMyBusiness(
             access_token=oauth_token,
             start_timestamp=start_date_str,
             end_timestamp=end_date_str,
-            data_folder_path=self.data_folder_path)
+            data_folder_path=self.data_folder_path,
+            default_columns=default_columns)
         gmb.run(endpoints=endpoints)
+
+        self.write_state_file(gmb.tables_columns)
 
         logging.info("Extraction finished")
 
