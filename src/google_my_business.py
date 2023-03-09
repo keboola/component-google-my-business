@@ -271,7 +271,8 @@ class GoogleMyBusiness:
                 time_series = response['timeSeries']['datedValues']
 
                 for dated_value in time_series:
-                    date = f"{dated_value['date']['year']}-{dated_value['date']['month']:02d}-{dated_value['date']['day']:02d}"
+                    date = f"{dated_value['date']['year']}-{dated_value['date']['month']:02d}-" \
+                           f"{dated_value['date']['day']:02d}"
                     value = int(dated_value.get('value', '0'))
                     if date not in parsed_values:
                         parsed_values[date] = {}
