@@ -25,17 +25,10 @@ mapping = {
         "value"
     ],
     "reviews": [
-        "name",
-        "reviews_reviewId",
-        "reviews_reviewer_profilePhotoUrl",
-        "reviews_reviewer_displayName",
-        "reviews_starRating",
-        "reviews_createTime",
-        "reviews_updateTime",
-        "reviews_name",
-        "reviews_comment",
-        "reviews_reviewReply_comment",
-        "reviews_reviewReply_updateTime"
+        'name', 'reviews_reviewId', 'reviewer_profilePhotoUrl',
+        'reviewer_displayName', 'reviews_starRating', 'reviews_comment',
+        'reviews_createTime', 'reviews_updateTime', 'reviews_name',
+        'reviewReply_comment', 'reviewReply_updateTime'
     ],
     "media": [
         "name",

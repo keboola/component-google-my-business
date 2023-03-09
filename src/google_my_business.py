@@ -2,22 +2,30 @@ import os
 import json  # noqa
 import requests
 import logging
-import pandas as pd
+from datetime import datetime
+
+from keboola.csvwriter import ElasticDictWriter
 
 from definitions import mapping as output_columns_mapping
 
-"""
-if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
-    logger = logging.getLogger()
-    logging_gelf_handler = logging_gelf.handlers.GELFTCPSocketHandler(
-        host=os.getenv('KBC_LOGGER_ADDR'), port=int(os.getenv('KBC_LOGGER_PORT')))
-    logging_gelf_handler.setFormatter(
-        logging_gelf.formatters.GELFFormatter(null_character=True))
-    logger.addHandler(logging_gelf_handler)
+AVAILABLE_DAILY_METRICS = ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+                           "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+                           "BUSINESS_CONVERSATIONS", "BUSINESS_DIRECTION_REQUESTS", "CALL_CLICKS",
+                           "WEBSITE_CLICKS", "BUSINESS_BOOKINGS", "BUSINESS_FOOD_ORDERS", "BUSINESS_FOOD_MENU_CLICKS"
+                           ]
 
-    # remove default logging to stdout
-    logger.removeHandler(logger.handlers[0])
-"""
+
+def get_date_from_string(date_string):
+    """
+    Extracts the year, month, and day from a string in the format "YYYY-MM-DDTHH:MM:SS.ffffffZ"
+    and returns them as a tuple.
+    """
+    date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
+    date_object = datetime.strptime(date_string, date_format)
+    year = date_object.year
+    month = date_object.month
+    day = date_object.day
+    return year, month, day
 
 
 class GMBException(Exception):
@@ -30,6 +38,9 @@ class GoogleMyBusiness:
         self.access_token = access_token
         self.base_url = 'https://mybusiness.googleapis.com/v4'
         self.base_url_v1 = "https://mybusiness.googleapis.com/v1"
+        self.base_url_profile_performance = "https://businessprofileperformance.googleapis.com/v1"
+        self.base_url_quanda = "https://mybusinessqanda.googleapis.com/v1"
+
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
         self.data_folder_path = data_folder_path
@@ -40,6 +51,10 @@ class GoogleMyBusiness:
         self.default_file_destination = os.path.join(data_folder_path, "out/files/")
 
         self.session = requests.Session()
+        self.reviews = []
+        self.questions = []
+        self.media = []
+        self.daily_metrics = {}
 
     def run(self, endpoints=None):
 
@@ -52,9 +67,7 @@ class GoogleMyBusiness:
         logging.info('Outputting Accounts...')
         self.generic_parser(
             data_in=all_accounts,
-            parent_obj_name='accounts',
-            primary_key_name='name'
-            # output_columns=self.output_columns['accounts']
+            endpoint='accounts'
         )
 
         # Finding all the accounts available for the authorized account
@@ -67,8 +80,7 @@ class GoogleMyBusiness:
             logging.info('Outputting Locations...')
             self.generic_parser(
                 data_in=all_locations,
-                parent_obj_name='locations',
-                primary_key_name='name'
+                endpoint='locations'
             )
 
             # If there are no locations, terminating the application
@@ -76,42 +88,49 @@ class GoogleMyBusiness:
                 logging.warning(
                     f'There are no location info under the authorized account [{account["accountName"]}].')
 
-            # Looping through all the locations
-            for location in all_locations:
-                location_id = location['name']
-                logging.info('Parsing location [{}]...'.format(location_id))
+            # Looping through all the locations and endpoints
+            if 'dailyMetrics' in endpoints:
+                for location in all_locations:
+                    location_path = location['name']
+                    location_id = location_path.replace("locations/", "")
+                    location_title = location['title']
+                    logging.info(f"Processing endpoint dailyMetrics for {location_title}.")
+                    self.daily_metrics[location_id] = self.report_daily_metrics(location_id=location_path)
+                self.daily_metrics_parser(data_in=self.daily_metrics)
+            self.daily_metrics = {}
 
-                # Looping through all the requested endpoints
-                for endpoint in endpoints:
-                    logging.info(
-                        'Fetching [{}] - {}...'.format(location_id, endpoint))
-                    # insights endpoint has a different request url and method
-                    if endpoint != 'reportInsights':
-                        data_out = self.list_location_related_info(
-                            location_id=location_id,
-                            endpoint=endpoint)
-                    else:
-                        data_out = self.list_report_insights(
-                            account_id=account_id,
-                            location_id=location_id
-                        )
+            if 'reviews' in endpoints:
+                for location in all_locations:
+                    location_path = location['name']
+                    location_title = location['title']
+                    logging.info(f"Processing reviews for {location_title}.")
+                    reviews = self.list_reviews(account_id=account_id, location_id=location_path)
+                    for review in reviews:
+                        self.reviews.append(review)
+                self.generic_parser(data_in=self.reviews, endpoint="reviews")
+            self.reviews = []
 
-                    # Ensure the output data file contains data, if not output nothing
-                    if data_out and endpoint != 'reportInsights':
+            if 'media' in endpoints:
+                for location in all_locations:
+                    location_path = location['name']
+                    location_title = location['title']
+                    logging.info(f"Processing questions for {location_title}.")
+                    media = self.list_media(location_id=location_path, account_id=account_id)
+                    for medium in media:
+                        self.questions.append(medium)
+                self.generic_parser(data_in=self.media, endpoint="media")
+            self.questions = []
 
-                        self.generic_parser(
-                            data_in=data_out,
-                            parent_obj_name=endpoint,
-                            primary_key_name='name'
-                            # output_columns=self.output_columns.get(endpoint)
-                        )
-                    elif data_out and endpoint == 'reportInsights':
-                        self.insight_parser(
-                            data_in=data_out
-                        )
-                    else:
-                        logging.info(
-                            'No [{}] found - {}'.format(endpoint, location['locationName']))
+            if 'questions' in endpoints:
+                for location in all_locations:
+                    location_path = location['name']
+                    location_title = location['title']
+                    logging.info(f"Processing questions for {location_title}.")
+                    questions = self.list_questions(location_id=location_path)
+                    for question in questions:
+                        self.questions.append(question)
+                self.generic_parser(data_in=self.questions, endpoint="questions")
+            self.questions = []
 
         self.produce_manifest('accounts', ['name'])
         self.produce_manifest('locations', ['name'])
@@ -125,7 +144,6 @@ class GoogleMyBusiness:
 
         return res.status_code, res
 
-    @staticmethod
     def post_request(self, url, headers=None, payload=None):
         """
         Base POST request
@@ -152,8 +170,7 @@ class GoogleMyBusiness:
         # Get Account Lists
         res_status, account_raw = self.get_request(account_url, params=params)
         if res_status != 200:
-            logging.warning(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
-            return []
+            raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
 
         account_json = account_raw.json()
         out_account_list = account_json['accounts']
@@ -194,64 +211,63 @@ class GoogleMyBusiness:
         # Looping for all the locations
         if 'nextPageToken' in location_json:
             out_location_list = out_location_list + \
-                                self.list_locations(
-                                    nextPageToken=location_json['nextPageToken'])
+                                self.list_locations(account_id=account_id,
+                                                    nextPageToken=location_json['nextPageToken'])
 
         return out_location_list
 
-    def list_report_insights(self, account_id, location_id):
+    def report_daily_metrics(self, location_id):
         """
-        Fetching all the report insights from assigned location
+        Fetching all the report insights from assigned location.
+        https://developers.google.com/my-business/reference/performance/rest/v1/
+        locations/getDailyMetricsTimeSeries#DailyRange
         """
+        start_year, start_month, start_day = get_date_from_string(self.start_timestamp)
+        end_year, end_month, end_day = get_date_from_string(self.end_timestamp)
 
-        insight_url = '{}/{}/locations:reportInsights'.format(
-            self.base_url, account_id)
-        header = {
-            'Content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(self.access_token)
-        }
-        payload = {
-            'locationNames': [
-                location_id
-            ],
-            'basicRequest': {
-                'metricRequests': [
-                    {
-                        'metric': 'ALL',
-                        'options': [
-                            'AGGREGATED_DAILY'
-                        ]
-                    }
-                ],
-                'timeRange': {
-                    'startTime': self.start_timestamp,
-                    'endTime': self.end_timestamp
-                }
+        parsed_values = {}
+        for metric in AVAILABLE_DAILY_METRICS:
+            logging.info(f"Fetching metric: {metric}")
+            insight_url = self.base_url_profile_performance + f"/{location_id}:getDailyMetricsTimeSeries"
+            params = {
+                "dailyMetric": metric,
+                "dailyRange.startDate.year": start_year,
+                "dailyRange.startDate.month": start_month,
+                "dailyRange.startDate.day": start_day,
+                "dailyRange.endDate.year": end_year,
+                "dailyRange.endDate.month": end_month,
+                "dailyRange.endDate.day": end_day,
             }
-        }
 
-        res_status, insights_raw = self.post_request(
-            insight_url, headers=header, payload=payload)
+            header = {
+                'Content-type': 'application/json',
+                'Authorization': 'Bearer {}'.format(self.access_token)
+            }
 
-        if res_status != 200:
-            raise GMBException(f'Something wrong with report insight request. Response: {insights_raw}')
+            res_status, insights_raw = self.get_request(url=insight_url, headers=header, params=params)
 
-        # Conditions when the API does not return expected results
-        if 'locationMetrics' in insights_raw.json():
-            insights_json = insights_raw.json()['locationMetrics']
-        else:
-            insights_json = []
+            if res_status != 200:
+                raise GMBException(f'Something wrong with report insight request. Response: {insights_raw.text}')
 
-        return insights_json
+            response = insights_raw.json()
+            if 'timeSeries' in response:
+                time_series = response['timeSeries']['datedValues']
 
-    def list_location_related_info(self, location_id, endpoint, nextPageToken=None):
-        """
-        Fetching all the information associated to the location
-        """
+                for dated_value in time_series:
+                    date = f"{dated_value['date']['year']}-{dated_value['date']['month']:02d}-{dated_value['date']['day']:02d}"
+                    value = int(dated_value.get('value', '0'))
+                    if date not in parsed_values:
+                        parsed_values[date] = {}
+                    parsed_values[date][metric] = value
 
-        out_data = []
+            else:
+                logging.info(f"Metric {metric} did not return any time series.")
+        return parsed_values
 
-        generic_url = '{}/{}/{}'.format(self.base_url, location_id, endpoint)
+    def list_reviews(self, account_id, location_id, nextPageToken=None):
+        responses = []
+
+        url = self.base_url + "/" + account_id + "/" + location_id + "/reviews"
         params = {
             'access_token': self.access_token
         }
@@ -259,147 +275,95 @@ class GoogleMyBusiness:
             params['pageToken'] = nextPageToken
 
         # Get review for the location
-        res_status, data_raw = self.get_request(generic_url, params=params)
+        res_status, data_raw = self.get_request(url, params=params)
         if res_status != 200:
-            print(data_raw.text)
-            raise GMBException(f'Something wrong with request. Response: {data_raw}')
+            raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
         data_json = data_raw.json()
+        responses.extend(data_json['reviews'])
 
-        if endpoint == 'media':
-            out_data = data_json['mediaItems'] if data_json.get(
-                'mediaItems') else {}
-        else:
-            try:
-                out_data = data_json[endpoint]
-            except Exception:
-                logging.error(data_json)
-
-        # Looping for all the reviews
         if 'nextPageToken' in data_json:
-            out_data = out_data + \
-                       self.list_location_related_info(
-                           location_id=location_id,
-                           endpoint=endpoint,
-                           nextPageToken=data_json['nextPageToken'])
+            responses.extend(self.list_reviews(
+                account_id=account_id,
+                location_id=location_id,
+                nextPageToken=data_json['nextPageToken']))
 
-        return out_data
+        return responses
 
-    def output_file(self, file_name, data_in, output_columns=None):
+    def list_questions(self, location_id, nextPageToken=None):
+        responses = []
+
+        url = self.base_url_quanda + "/" + location_id + "/questions"
+        print(url)
+
+        params = {
+            'access_token': self.access_token
+        }
+        if nextPageToken:
+            params['pageToken'] = nextPageToken
+
+        # Get review for the location
+        res_status, data_raw = self.get_request(url, params=params)
+        if res_status != 200:
+            raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
+        data_json = data_raw.json()
+        responses.extend(data_json['questions'])
+
+        if 'nextPageToken' in data_json:
+            responses.extend(self.list_questions(
+                location_id=location_id,
+                nextPageToken=data_json['nextPageToken']))
+
+        return responses
+
+    def list_media(self, location_id, account_id, nextPageToken=None):
+        responses = []
+
+        url = self.base_url + "/" + account_id + "/" + location_id + "/media"
+
+        params = {
+            'access_token': self.access_token
+        }
+        if nextPageToken:
+            params['pageToken'] = nextPageToken
+
+        # Get review for the location
+        res_status, data_raw = self.get_request(url, params=params)
+        if res_status != 200:
+            raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
+        if res_status == 503:
+            raise GMBException("Media service is unavailable at the moment.")
+
+        data_json = data_raw.json()
+        if data_json:
+            responses.extend(data_json['mediaItems'])
+
+            if 'nextPageToken' in data_json:
+                responses.extend(self.list_media(
+                    location_id=location_id,
+                    account_id=account_id,
+                    nextPageToken=data_json['nextPageToken']))
+
+        return responses
+
+    def output_file(self, file_name, data_in):
         """
-        Output dataframe to destination file
+        Saves data to csv file
         """
-
         file_output_destination = '{}{}.csv'.format(
             self.default_table_destination, file_name)
 
-        df = pd.DataFrame(data_in)
-        print(df.columns)
-        output_file_columns = output_columns_mapping.get(file_name)
-
-        # Logic to shrink column names if they are too long
-        if not output_file_columns:
-            header_columns = []
-
-            for col in df.columns:
-                while len(col) > 64:
-                    col_split = col.split('_')
-                    col = '_'.join(col_split[1:])
-
-                header_columns.append(col)
+        if output_columns_mapping.get(file_name):
+            output_file_columns = output_columns_mapping.get(file_name)
         else:
-            header_columns = output_file_columns
+            output_file_columns = []
 
         # Output input datasets with selected columns and dedicated column names
-        if not os.path.isfile(file_output_destination):
-            with open(file_output_destination, 'w') as f:
-                df.to_csv(f, index=False,
-                          columns=output_file_columns, header=header_columns)
-            f.close()
-        else:
-            with open(file_output_destination, 'a') as f:
-                df.to_csv(f, index=False, header=False,
-                          columns=output_file_columns)
-            f.close()
+        with ElasticDictWriter(file_output_destination, output_file_columns) as wr:
+            wr.writeheader()
+            wr.writerows(data_in)
 
-    def generic_parser(self, data_in,
-                       parent_obj_name=None,  # parent JSON property name to carry over as the filename
-                       parent_col_name=None,  # Parent loop column name
-                       primary_key_name=None,
-                       primary_key_value=None
-                       # output_columns=None  # specifying what columns to output
-                       ):
-        """
-        Generic Parser
-        1. if type is list, it will output a new table under that JSON obj
-        2. if type is dict, it will flatten the obj and output under the same parent obj
-        3. if type is string, it will compile all the strings within the same obj and output
-        """
-
-        if type(data_in) is list:
-
-            # For cases when the data in the list is not object, but strings
-            # example: ['a', 'b', 'c']
-            if len(data_in) > 0:
-                if type(data_in[0]) is str:
-                    return f'{data_in}'
-
-            data_out = []
-            for obj in data_in:
-                temp_json_obj = {}
-                # Setting up parent value
-                if primary_key_name:
-                    try:
-                        primary_key_value = obj[primary_key_name]
-                        temp_json_obj[primary_key_name] = primary_key_value
-                    except Exception:
-                        if primary_key_value:
-                            temp_json_obj[primary_key_name] = primary_key_value
-
-                # Output Sequences
-                for col in obj:
-                    if col == 'priceLists' or col == 'attributes':
-                        # Skipping priceLists obj from location which causes issues with parsing
-                        # Data is not needed from this atm
-                        break
-
-                    # For cases when the data in the list is not object, but strings
-                    # example: ['a', 'b', 'c']
-                    if type(obj[col]) is list and type(obj[col][0]) is str:
-                        temp_json_obj[col] = f'{obj[col]}'
-
-                    else:
-                        json_value = self.generic_parser(
-                            data_in=obj[col],
-                            parent_obj_name='{}_{}'.format(parent_obj_name, col),
-                            parent_col_name=col,
-                            primary_key_name=primary_key_name,
-                            primary_key_value=primary_key_value
-                            # output_columns=output_columns
-                        )
-                        if json_value:
-                            for row in json_value:
-                                temp_json_obj[row] = json_value[row]
-                data_out.append(temp_json_obj)
-
-            if data_out:
-                self.output_file(file_name=parent_obj_name, data_in=data_out)
-
-            return None
-
-        elif type(data_in) is dict:
-            temp_json_obj = {}
-            for obj in data_in:
-                # new_col_name = f'{obj}'
-                new_col_name = f'{parent_col_name}_{obj}'
-                temp_json_obj[new_col_name] = data_in[obj]
-            return temp_json_obj
-
-        elif type(data_in) is str:
-            temp_json_obj = {
-                parent_obj_name: data_in
-                # parent_col_name: data_in
-            }
-            return temp_json_obj
+    def generic_parser(self, data_in, endpoint):
+        self.output_file(file_name=endpoint, data_in=data_in)
 
     def produce_manifest(self, file_name, primary_key):
         """
@@ -420,35 +384,27 @@ class GoogleMyBusiness:
             logging.error("Could not produce output file manifest.")
             logging.error(e)
 
-    def insight_parser(self, data_in):
+    def daily_metrics_parser(self, data_in):
         """
         Parser dedicated for fetching location metrics
         """
 
         data_out = []
         primary_key = [
-            'location',
-            'metric',
-            'date'
+            'location_id',
+            'date',
+            'metric'
         ]
 
-        for location in data_in:
-            for metric in location['metricValues']:
-                # There are cases where the metric name is missing from the API result
-                if 'metric' in metric:
-                    for metric_value in metric['dimensionalValues']:
-                        if 'value' in metric_value:
-                            value = metric_value['value']
-                        else:
-                            value = '0'
+        for location_id, date_data in data_in.items():
+            for date, metrics in date_data.items():
+                for metric, value in metrics.items():
+                    data_out.append({
+                        "location_id": location_id,
+                        "date": date,
+                        "metric": metric,
+                        "value": value
+                    })
 
-                        temp_json = {
-                            'location': location['locationName'],
-                            'metric': metric['metric'],
-                            'date': metric_value['timeDimension']['timeRange']['startTime'],
-                            'value': value
-                        }
-                        data_out.append(temp_json)
-
-        self.output_file('location_insights', data_out)
-        self.produce_manifest('location_insights', primary_key)
+        self.output_file('daily_metrics', data_out)
+        self.produce_manifest('daily_metrics', primary_key)
