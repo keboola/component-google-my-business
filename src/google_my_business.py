@@ -161,15 +161,6 @@ class GoogleMyBusiness:
 
         return res.status_code, res
 
-    def post_request(self, url, headers=None, payload=None):
-        """
-        Base POST request
-        """
-
-        res = self.session.post(url=url, headers=headers, json=payload)
-
-        return res.status_code, res
-
     def list_accounts(self, nextPageToken=None):
         """
         Fetching all the accounts available in the authorized Google account
