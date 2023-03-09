@@ -13,7 +13,7 @@
             "uniqueItems": true,
             "items": {
                 "enum": [
-                    "reportInsights",
+                    "dailyMetrics",
                     "reviews",
                     "media",
                     "questions"
@@ -21,7 +21,7 @@
                 "type": "string",
                 "options": {
                     "enum_titles": [
-                        "Location Insights",
+                        "Daily Metrics",
                         "Reviews",
                         "Media",
                         "Questions"

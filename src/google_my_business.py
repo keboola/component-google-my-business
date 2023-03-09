@@ -115,7 +115,7 @@ class GoogleMyBusiness:
                     location_id = location_path.replace("locations/", "")
                     location_title = location['title']
                     logging.info(f"Processing endpoint dailyMetrics for {location_title}.")
-                    self.daily_metrics[location_id] = self.report_daily_metrics(location_id=location_path)
+                    self.daily_metrics[location_id] = self.list_daily_metrics(location_id=location_path)
                 self.daily_metrics_parser(data_in=self.daily_metrics)
             self.daily_metrics = {}
 
@@ -233,7 +233,7 @@ class GoogleMyBusiness:
 
         return out_location_list
 
-    def report_daily_metrics(self, location_id):
+    def list_daily_metrics(self, location_id):
         """
         Fetching all the report insights from assigned location.
         https://developers.google.com/my-business/reference/performance/rest/v1/
