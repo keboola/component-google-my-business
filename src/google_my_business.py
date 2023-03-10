@@ -132,7 +132,7 @@ class GoogleMyBusiness:
 
             # If there are no locations, terminating the application
             if len(all_locations) == 0:
-                raise GMBException(f'There are no location info under the authorized '
+                raise GMBException(f'There is no location info under the authorized '
                                    f'account [{account["accountName"]}].')
 
             # Looping through all the locations and endpoints
@@ -208,6 +208,7 @@ class GoogleMyBusiness:
             raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
 
         account_json = account_raw.json()
+        print(account_json)
         out_account_list = account_json['accounts']
 
         # Looping for all the accounts

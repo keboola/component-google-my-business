@@ -10,7 +10,7 @@ import requests
 from keboola.component.base import ComponentBase
 from keboola.component.exceptions import UserException
 
-from google_my_business import GoogleMyBusiness
+from google_my_business import GoogleMyBusiness, GMBException
 
 
 # configuration variables
@@ -83,7 +83,10 @@ class Component(ComponentBase):
             end_timestamp=end_date_str,
             data_folder_path=self.data_folder_path,
             default_columns=default_columns)
-        gmb.run(endpoints=endpoints)
+        try:
+            gmb.run(endpoints=endpoints)
+        except GMBException as e:
+            raise UserException(e)
 
         self.write_state_file(gmb.tables_columns)
 
