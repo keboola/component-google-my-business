@@ -327,7 +327,7 @@ class GoogleMyBusiness:
 
             return responses
         else:
-            GMBException(f'Reviews not found in response: {data_raw.text}')
+            raise GMBException(f'Reviews not found in response: {data_raw.text}')
 
     def list_questions(self, location_id, nextPageToken=None):
         responses = []
