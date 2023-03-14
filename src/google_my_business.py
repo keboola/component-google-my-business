@@ -316,15 +316,18 @@ class GoogleMyBusiness:
         if res_status != 200:
             raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
         data_json = data_raw.json()
-        responses.extend(data_json['reviews'])
+        if 'reviews' in data_json:
+            responses.extend(data_json['reviews'])
 
-        if 'nextPageToken' in data_json:
-            responses.extend(self.list_reviews(
-                account_id=account_id,
-                location_id=location_id,
-                nextPageToken=data_json['nextPageToken']))
+            if 'nextPageToken' in data_json:
+                responses.extend(self.list_reviews(
+                    account_id=account_id,
+                    location_id=location_id,
+                    nextPageToken=data_json['nextPageToken']))
 
-        return responses
+            return responses
+        else:
+            GMBException(f'Reviews not found in response: {data_raw.text}')
 
     def list_questions(self, location_id, nextPageToken=None):
         responses = []
