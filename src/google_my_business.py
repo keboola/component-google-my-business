@@ -105,7 +105,11 @@ class GoogleMyBusiness:
         self.account_list = []
 
     def test_connection(self):
-        self.list_accounts()
+        try:
+            logging.info("hello")
+            self.list_accounts()
+        except Exception as e:
+            raise GMBException(e)
 
     def process(self, endpoints=None):
 

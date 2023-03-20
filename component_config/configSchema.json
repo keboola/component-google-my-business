@@ -8,7 +8,8 @@
     "properties": {
         "test_connection": {
         "type": "button",
-        "format": "test-connection"
+        "format": "test-connection",
+        "propertyOrder": 1
     },
         "endpoints": {
             "type": "array",

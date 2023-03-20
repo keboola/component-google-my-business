@@ -148,8 +148,36 @@ class Component(ComponentBase):
             data_folder_path=self.data_folder_path)
         try:
             gmb.test_connection()
-        except GMBException as e:
-            raise UserException(e)
+        except GMBException:
+            raise UserException("failed")
+
+    @sync_action('listAccounts')
+    def list_accounts(self):
+        authorization = self.configuration.config_data["authorization"]
+        oauth_token = self.get_oauth_token(authorization)
+
+        gmb = GoogleMyBusiness(
+            access_token=oauth_token,
+            data_folder_path=self.data_folder_path)
+        try:
+            gmb.process(endpoints=["accounts"])
+        except GMBException:
+            raise UserException("failed")
+
+        results = []
+        for account in gmb.account_list:
+            if account.get("name", None) and account.get("accountName", None):
+                results.append(
+                    {
+                        "label": account.get("accountName"),
+                        "value": account.get("name")
+                    }
+                )
+
+        return results
+
+
+
 
 
 """
