@@ -6,8 +6,9 @@ import json
 import datetime  # noqa
 import dateparser
 import requests
+import shutil
 
-from keboola.component.base import ComponentBase
+from keboola.component.base import ComponentBase, sync_action
 from keboola.component.exceptions import UserException
 
 from google_my_business import GoogleMyBusiness, GMBException
@@ -77,6 +78,8 @@ class Component(ComponentBase):
         else:
             default_columns = []
 
+        self.create_temp_folder()
+
         gmb = GoogleMyBusiness(
             access_token=oauth_token,
             start_timestamp=start_date_str,
@@ -84,11 +87,12 @@ class Component(ComponentBase):
             data_folder_path=self.data_folder_path,
             default_columns=default_columns)
         try:
-            gmb.run(endpoints=endpoints)
+            gmb.process(endpoints=endpoints)
         except GMBException as e:
             raise UserException(e)
 
         self.write_state_file(gmb.tables_columns)
+        self.delete_temp_folder()
 
         logging.info("Extraction finished")
 
@@ -121,6 +125,31 @@ class Component(ComponentBase):
 
         data_r = response.json()
         return data_r["access_token"]
+
+    def create_temp_folder(self):
+        temp_path = os.path.join(self.data_folder_path, "temp")
+        if not os.path.exists(temp_path):
+            logging.info("creating temp folder")
+            os.makedirs(temp_path)
+
+    def delete_temp_folder(self):
+        temp_path = os.path.join(self.data_folder_path, "temp")
+        try:
+            shutil.rmtree(temp_path)
+        except OSError as e:
+            logging.error(f"Error deleting {temp_path}: {e}")
+
+    @sync_action('testConnection')
+    def test_connection(self):
+        authorization = self.configuration.config_data["authorization"]
+        oauth_token = self.get_oauth_token(authorization)
+        gmb = GoogleMyBusiness(
+            access_token=oauth_token,
+            data_folder_path=self.data_folder_path)
+        try:
+            gmb.test_connection()
+        except GMBException as e:
+            raise UserException(e)
 
 
 """

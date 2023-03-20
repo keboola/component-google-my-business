@@ -3,6 +3,8 @@ import json
 import requests
 import logging
 from datetime import datetime
+import uuid
+import backoff
 
 from keboola.csvwriter import ElasticDictWriter
 
@@ -76,7 +78,7 @@ class GMBException(Exception):
 
 
 class GoogleMyBusiness:
-    def __init__(self, access_token, start_timestamp, end_timestamp, data_folder_path, default_columns=None):
+    def __init__(self, access_token, data_folder_path, default_columns=None, start_timestamp=None, end_timestamp=None):
         if default_columns is None:
             default_columns = []
         self.output_columns = None
@@ -90,10 +92,8 @@ class GoogleMyBusiness:
         self.end_timestamp = end_timestamp
         self.data_folder_path = data_folder_path
 
-        self.default_table_source = os.path.join(data_folder_path, "in/tables/")
+        self.temp_table_destination = os.path.join(data_folder_path, "temp/")
         self.default_table_destination = os.path.join(data_folder_path, "out/tables/")
-        self.default_file_source = os.path.join(data_folder_path, "in/files/")
-        self.default_file_destination = os.path.join(data_folder_path, "out/files/")
 
         self.session = requests.Session()
         self.reviews = []
@@ -102,45 +102,46 @@ class GoogleMyBusiness:
         self.daily_metrics = {}
 
         self.tables_columns = default_columns if default_columns else {}
+        self.account_list = []
 
-    def run(self, endpoints=None):
+    def test_connection(self):
+        self.list_accounts()
 
-        if endpoints is None:
-            endpoints = []
-        all_accounts = self.list_accounts()
-        logging.info(f'Accounts found: [{len(all_accounts)}]')
+    def process(self, endpoints=None):
+
+        self.list_accounts()
+        logging.info(f'Accounts found: [{len(self.account_list)}]')
 
         # Outputting all the accounts found
         logging.info('Outputting Accounts...')
-        self.output_file(
-            data_in=all_accounts,
+        self.create_temp_files(
+            data_in=self.account_list,
             file_name='accounts'
         )
 
         # Finding all the accounts available for the authorized account
-        for account in all_accounts:
+        for account in self.account_list:
             account_id = account['name']
             # Fetching all the locations available for the entered account
             all_locations = self.list_locations(account_id=account_id)
             logging.info('Locations found in Account [{}] - [{}]'.format(
                 account['accountName'], len(all_locations)))
             logging.info('Outputting Locations...')
-            self.output_file(
+            self.create_temp_files(
                 data_in=all_locations,
                 file_name='locations'
             )
 
-            # If there are no locations, terminating the application
             if len(all_locations) == 0:
-                raise GMBException(f'There is no location info under the authorized '
-                                   f'account [{account["accountName"]}].')
+                logging.error(f'There is no location info under the authorized '
+                              f'account [{account["accountName"]}].')
+                continue
 
-            # Looping through all the locations and endpoints
             if 'dailyMetrics' in endpoints:
                 for location in all_locations:
                     location_path = location['name']
-                    location_id = location_path.replace("locations/", "")
                     location_title = location['title']
+                    location_id = location_path.replace("locations/", "")
                     logging.info(f"Processing endpoint dailyMetrics for {location_title}.")
                     self.daily_metrics[location_id] = self.list_daily_metrics(location_id=location_path)
                 self.daily_metrics_parser(data_in=self.daily_metrics)
@@ -154,7 +155,7 @@ class GoogleMyBusiness:
                     reviews = self.list_reviews(account_id=account_id, location_id=location_path)
                     for review in reviews:
                         self.reviews.append(review)
-                self.output_file(data_in=self.reviews, file_name="reviews")
+                self.create_temp_files(data_in=self.reviews, file_name="reviews")
             self.reviews = []
 
             if 'media' in endpoints:
@@ -164,9 +165,9 @@ class GoogleMyBusiness:
                     logging.info(f"Processing media for {location_title}.")
                     media = self.list_media(location_id=location_path, account_id=account_id)
                     for medium in media:
-                        self.questions.append(medium)
-                self.output_file(data_in=self.media, file_name="media")
-            self.questions = []
+                        self.media.append(medium)
+                self.create_temp_files(data_in=self.media, file_name="media")
+            self.media = []
 
             if 'questions' in endpoints:
                 for location in all_locations:
@@ -176,8 +177,10 @@ class GoogleMyBusiness:
                     questions = self.list_questions(location_id=location_path)
                     for question in questions:
                         self.questions.append(question)
-                self.output_file(file_name="questions", data_in=self.questions)
+                self.create_temp_files(file_name="questions", data_in=self.questions)
             self.questions = []
+
+        self.save_resulting_files()
 
     def get_request(self, url, headers=None, params=None):
         """
@@ -208,16 +211,21 @@ class GoogleMyBusiness:
             raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
 
         account_json = account_raw.json()
-        print(account_json)
-        out_account_list = account_json['accounts']
+        """
+        for account in account_json["accounts"]:
+            if account["type"] != "LOCATION_GROUP":
+                self.account_list.append(account)
+        print(self.account_list)
+        exit()
+        """
+        self.account_list = account_json['accounts']
 
         # Looping for all the accounts
         if 'nextPageToken' in account_json:
-            out_account_list = out_account_list + \
-                               self.list_accounts(nextPageToken=account_json['nextPageToken'])
+            self.account_list = self.account_list + \
+                                self.list_accounts(nextPageToken=account_json['nextPageToken'])
 
-        return out_account_list
-
+    @backoff.on_exception(backoff.expo, GMBException, max_tries=5)
     def list_locations(self, account_id, nextPageToken=None):
         """
         Fetching all locations associated to the account_id
@@ -263,7 +271,6 @@ class GoogleMyBusiness:
 
         parsed_values = {}
         for metric in AVAILABLE_DAILY_METRICS:
-            logging.info(f"Fetching metric: {metric}")
             insight_url = self.base_url_profile_performance + f"/{location_id}:getDailyMetricsTimeSeries"
             params = {
                 "dailyMetric": metric,
@@ -283,6 +290,10 @@ class GoogleMyBusiness:
             res_status, insights_raw = self.get_request(url=insight_url, headers=header, params=params)
 
             if res_status != 200:
+                if res_status == 403:
+                    logging.error(f"Cannot fetch daily metrics for location with id {location_id}, response: "
+                                  f"{insights_raw.text}")
+                    return {}
                 raise GMBException(f'Something wrong with report insight request. Response: {insights_raw.text}')
 
             response = insights_raw.json()
@@ -299,6 +310,7 @@ class GoogleMyBusiness:
 
             else:
                 logging.info(f"Metric {metric} did not return any time series.")
+
         return parsed_values
 
     def list_reviews(self, account_id, location_id, nextPageToken=None):
@@ -327,7 +339,8 @@ class GoogleMyBusiness:
 
             return responses
         else:
-            raise GMBException(f'Reviews not found in response: {data_raw.text}')
+            logging.warning(f'Reviews for location with id {location_id} not found in response: {data_raw.text}')
+            return []
 
     def list_questions(self, location_id, nextPageToken=None):
         responses = []
@@ -343,19 +356,27 @@ class GoogleMyBusiness:
         # Get review for the location
         res_status, data_raw = self.get_request(url, params=params)
         if res_status != 200:
-            raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
+            if res_status == 400:
+                if data_raw.json()["error"]["details"][0]["reason"] == "UNVERIFIED_LOCATION":
+                    logging.warning(f"Location with id {location_id} is unverified. Cannot fetch questions.")
+            else:
+                logging.warning(f"Cannot fetch questions for location with id {location_id}. Received response: "
+                                f"{data_raw.text}")
+            return []
+
         data_json = data_raw.json()
-        if data_json:
-            responses.extend(data_json['questions'])
+        if data_json.get("questions", None):
+            responses.extend(data_json["questions"])
             if 'nextPageToken' in data_json:
                 responses.extend(self.list_questions(
                     location_id=location_id,
                     nextPageToken=data_json['nextPageToken']))
         else:
-            logging.info(f"There are no media for {location_id}")
+            logging.info(f"There are no questions for {location_id}")
 
         return responses
 
+    @backoff.on_exception(backoff.expo, GMBException, max_tries=20)
     def list_media(self, location_id, account_id, nextPageToken=None):
         responses = []
 
@@ -367,7 +388,6 @@ class GoogleMyBusiness:
         if nextPageToken:
             params['pageToken'] = nextPageToken
 
-        # Get review for the location
         res_status, data_raw = self.get_request(url, params=params)
         if res_status != 200:
             raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
@@ -387,26 +407,19 @@ class GoogleMyBusiness:
 
         return responses
 
-    def output_file(self, file_name, data_in):
+    def create_temp_files(self, file_name, data_in):
         """
-        Saves data to csv file and produces manifest.
+        Saves data to json files.
         """
-        file_output_destination = '{}{}.csv'.format(
-            self.default_table_destination, file_name)
-
-        if self.tables_columns.get(file_name, {}):
-            fieldnames = self.tables_columns.get(file_name)
-        else:
-            fieldnames = []
+        file_output_destination = os.path.join(self.temp_table_destination, file_name)
+        if not os.path.exists(file_output_destination):
+            os.makedirs(file_output_destination)
 
         if data_in:
-            with ElasticDictWriter(file_output_destination, fieldnames) as wr:
-                wr.writeheader()
-                for row in data_in:
-                    wr.writerow(flatten_dict(row))
-
-            self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
-            self.tables_columns[file_name] = wr.fieldnames
+            for row in data_in:
+                filename = os.path.join(file_output_destination, str(uuid.uuid4())+".json")
+                with open(filename, 'w') as outfile:
+                    json.dump(flatten_dict(row), outfile)
         else:
             logging.warning(f"File {file_name} is empty. Results will not be stored.")
 
@@ -445,4 +458,38 @@ class GoogleMyBusiness:
                         "value": value
                     })
 
-        self.output_file('daily_metrics', data_out)
+        self.create_temp_files('daily_metrics', data_out)
+
+    def save_resulting_files(self):
+        """Produces manifest and saves column names to statefile"""
+
+        filenames = [f.name for f in os.scandir(self.temp_table_destination) if f.is_dir()]
+
+        for file_name in filenames:
+
+            if self.tables_columns.get(file_name, {}):
+                fieldnames = self.tables_columns.get(file_name)
+            else:
+                fieldnames = []
+
+            temp_dir = os.path.join(self.temp_table_destination, file_name)
+            temp_files = self.list_json_files(temp_dir)
+
+            tgt_path = os.path.join(self.default_table_destination, file_name+".csv")
+            with ElasticDictWriter(tgt_path, fieldnames) as wr:
+                wr.writeheader()
+                for file in temp_files:
+                    with open(file, 'r') as f:
+                        data = json.load(f)
+                    wr.writerow(data)
+
+            self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
+            self.tables_columns[file_name] = wr.fieldnames
+
+    @staticmethod
+    def list_json_files(target_dir):
+        json_files = []
+        for filename in os.listdir(target_dir):
+            if filename.endswith('.json'):
+                json_files.append(os.path.join(target_dir, filename))
+        return json_files
