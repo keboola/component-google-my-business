@@ -1,76 +1,201 @@
-import sys
 import os
-import json  # noqa
+import json
 import requests
 import logging
-import logging_gelf.handlers
-import logging_gelf.formatters
+from datetime import datetime
+import uuid
+import backoff
 
-import parser
+from keboola.csvwriter import ElasticDictWriter
 
+from definitions import mapping
 
-if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
-
-    logger = logging.getLogger()
-    logging_gelf_handler = logging_gelf.handlers.GELFTCPSocketHandler(
-        host=os.getenv('KBC_LOGGER_ADDR'), port=int(os.getenv('KBC_LOGGER_PORT')))
-    logging_gelf_handler.setFormatter(
-        logging_gelf.formatters.GELFFormatter(null_character=True))
-    logger.addHandler(logging_gelf_handler)
-
-    # remove default logging to stdout
-    logger.removeHandler(logger.handlers[0])
-
-# Request Parameters
-requesting = requests.Session()
+AVAILABLE_DAILY_METRICS = ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+                           "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+                           "BUSINESS_CONVERSATIONS", "BUSINESS_DIRECTION_REQUESTS", "CALL_CLICKS",
+                           "WEBSITE_CLICKS", "BUSINESS_BOOKINGS", "BUSINESS_FOOD_ORDERS", "BUSINESS_FOOD_MENU_CLICKS"
+                           ]
 
 
-class Google_My_Business():
-    '''
-    Google My Business Request Handler
-    '''
+def get_date_from_string(date_string):
+    """
+    Extracts the year, month, and day from a string in the format "YYYY-MM-DDTHH:MM:SS.ffffffZ"
+    and returns them as a tuple.
+    """
+    date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
+    date_object = datetime.strptime(date_string, date_format)
+    year = date_object.year
+    month = date_object.month
+    day = date_object.day
+    return year, month, day
 
-    def __init__(self, access_token, start_timestamp, end_timestamp):
+
+def flatten_dict(d, max_key_length=64):
+    flat_dict = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            sub_dict = flatten_dict(value, max_key_length)
+            for sub_key, sub_value in sub_dict.items():
+                full_key = f"{key}_{sub_key}"
+                if len(full_key) > max_key_length:
+                    # Truncate key if it's too long
+                    truncated_key = full_key[:max_key_length]
+                    flat_dict[truncated_key] = sub_value
+                else:
+                    flat_dict[full_key] = sub_value
+        elif isinstance(value, list):
+            for i, item in enumerate(value):
+                if isinstance(item, dict):
+                    sub_dict = flatten_dict(item, max_key_length)
+                    for sub_key, sub_value in sub_dict.items():
+                        full_key = f"{key}_{i}_{sub_key}"
+                        if len(full_key) > max_key_length:
+                            # Truncate key if it's too long
+                            truncated_key = full_key[:max_key_length]
+                            flat_dict[truncated_key] = sub_value
+                        else:
+                            flat_dict[full_key] = sub_value
+                else:
+                    full_key = f"{key}_{i}"
+                    if len(full_key) > max_key_length:
+                        # Truncate key if it's too long
+                        truncated_key = full_key[:max_key_length]
+                        flat_dict[truncated_key] = item
+                    else:
+                        flat_dict[full_key] = item
+        else:
+            if len(key) > max_key_length:
+                # Truncate key if it's too long
+                truncated_key = key[:max_key_length]
+                flat_dict[truncated_key] = value
+            else:
+                flat_dict[key] = value
+    return flat_dict
+
+
+class GMBException(Exception):
+    pass
+
+
+class GoogleMyBusiness:
+    def __init__(self, access_token, data_folder_path, default_columns=None, start_timestamp=None, end_timestamp=None):
+        if default_columns is None:
+            default_columns = []
+        self.output_columns = None
         self.access_token = access_token
         self.base_url = 'https://mybusiness.googleapis.com/v4'
+        self.base_url_v1 = "https://mybusiness.googleapis.com/v1"
+        self.base_url_profile_performance = "https://businessprofileperformance.googleapis.com/v1"
+        self.base_url_quanda = "https://mybusinessqanda.googleapis.com/v1"
+
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
-        # self.get_output_columns()
+        self.data_folder_path = data_folder_path
 
-    def get_output_columns(self):
-        '''
-        Getting all the column names from the mapping.json
-        '''
+        self.temp_table_destination = os.path.join(data_folder_path, "temp/")
+        self.default_table_destination = os.path.join(data_folder_path, "out/tables/")
 
-        with open('src/mapping.json', 'r') as f:
-            self.output_columns = json.load(f)
+        self.session = requests.Session()
+        self.reviews = []
+        self.questions = []
+        self.media = []
+        self.daily_metrics = {}
+
+        self.tables_columns = default_columns if default_columns else {}
+        self.account_list = []
+
+    def test_connection(self):
+        self.list_accounts()
+
+    def process(self, endpoints=None):
+
+        self.list_accounts()
+        logging.info(f'Accounts found: [{len(self.account_list)}]')
+
+        # Outputting all the accounts found
+        logging.info('Outputting Accounts...')
+        self.create_temp_files(
+            data_in=self.account_list,
+            file_name='accounts'
+        )
+
+        # Finding all the accounts available for the authorized account
+        for account in self.account_list:
+            account_id = account['name']
+            # Fetching all the locations available for the entered account
+            all_locations = self.list_locations(account_id=account_id)
+            logging.info('Locations found in Account [{}] - [{}]'.format(
+                account['accountName'], len(all_locations)))
+            logging.info('Outputting Locations...')
+            self.create_temp_files(
+                data_in=all_locations,
+                file_name='locations'
+            )
+
+            if len(all_locations) == 0:
+                logging.error(f'There is no location info under the authorized '
+                              f'account [{account["accountName"]}].')
+                continue
+
+            if 'dailyMetrics' in endpoints:
+                for location in all_locations:
+                    location_path = location['name']
+                    location_title = location['title']
+                    location_id = location_path.replace("locations/", "")
+                    logging.info(f"Processing endpoint dailyMetrics for {location_title}.")
+                    self.daily_metrics[location_id] = self.list_daily_metrics(location_id=location_path)
+                self.daily_metrics_parser(data_in=self.daily_metrics)
+            self.daily_metrics = {}
+
+            if 'reviews' in endpoints:
+                for location in all_locations:
+                    location_path = location['name']
+                    location_title = location['title']
+                    logging.info(f"Processing reviews for {location_title}.")
+                    reviews = self.list_reviews(account_id=account_id, location_id=location_path)
+                    for review in reviews:
+                        self.reviews.append(review)
+                self.create_temp_files(data_in=self.reviews, file_name="reviews")
+            self.reviews = []
+
+            if 'media' in endpoints:
+                for location in all_locations:
+                    location_path = location['name']
+                    location_title = location['title']
+                    logging.info(f"Processing media for {location_title}.")
+                    media = self.list_media(location_id=location_path, account_id=account_id)
+                    for medium in media:
+                        self.media.append(medium)
+                self.create_temp_files(data_in=self.media, file_name="media")
+            self.media = []
+
+            if 'questions' in endpoints:
+                for location in all_locations:
+                    location_path = location['name']
+                    location_title = location['title']
+                    logging.info(f"Processing questions for {location_title}.")
+                    questions = self.list_questions(location_id=location_path)
+                    for question in questions:
+                        self.questions.append(question)
+                self.create_temp_files(file_name="questions", data_in=self.questions)
+            self.questions = []
+
+        self.save_resulting_files()
 
     def get_request(self, url, headers=None, params=None):
-        '''
+        """
         Base GET request
-        '''
+        """
 
-        res = requesting.get(url=url, headers=headers, params=params)
-
-        return res.status_code, res
-
-    def post_request(self, url, headers=None, payload=None):
-        '''
-        Base POST request
-        '''
-
-        res = requesting.post(url=url, headers=headers, json=payload)
+        res = self.session.get(url=url, headers=headers, params=params)
 
         return res.status_code, res
 
     def list_accounts(self, nextPageToken=None):
-        '''
+        """
         Fetching all the accounts available in the authorized Google account
-        '''
-
-        # Accounts parameters
-        out_account_list = []
-        account_url = '{}/accounts'.format(self.base_url)
+        """
+        account_url = '{}/accounts'.format(self.base_url_v1)
 
         params = {
             'access_token': self.access_token
@@ -82,43 +207,43 @@ class Google_My_Business():
 
         # Get Account Lists
         res_status, account_raw = self.get_request(account_url, params=params)
-        # logging.info(account_raw.json())
         if res_status != 200:
-            logging.error('Error: Issues with fetching the list of accounts associated to the Authorized account.',
-                          'Please verify if authorized account has the privileges to access Google My Business Account')
-            sys.exit(1)
+            raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
+
         account_json = account_raw.json()
-        out_account_list = account_json['accounts']
+        """
+        for account in account_json["accounts"]:
+            if account["type"] != "LOCATION_GROUP":
+                self.account_list.append(account)
+        print(self.account_list)
+        exit()
+        """
+        self.account_list = account_json['accounts']
 
         # Looping for all the accounts
         if 'nextPageToken' in account_json:
-            out_account_list = out_account_list + \
-                self.list_accounts(nextPageToken=account_json['nextPageToken'])
+            self.account_list = self.account_list + \
+                                self.list_accounts(nextPageToken=account_json['nextPageToken'])
 
-        return out_account_list
-
+    @backoff.on_exception(backoff.expo, GMBException, max_tries=5)
     def list_locations(self, account_id, nextPageToken=None):
-        '''
+        """
         Fetching all locations associated to the account_id
-        '''
+        """
 
-        # Location paramters
-        out_location_list = []
-        location_url = '{}/{}/locations'.format(self.base_url, account_id)
+        location_url = '{}/{}/locations'.format(self.base_url_v1, account_id)
         params = {
-            'access_token': self.access_token
+            'access_token': self.access_token,
+            'readMask': 'name,languageCode,storeCode,title,phoneNumbers,categories,storefrontAddress,websiteUri,'
+                        'regularHours,specialHours,serviceArea,latlng,openInfo,metadata,profile,relationshipData'
         }
-        # Pagination
         if nextPageToken:
             params['pageToken'] = nextPageToken
 
-        # Get Loaction Lists
         res_status, location_raw = self.get_request(
             location_url, params=params)
         if res_status != 200:
-            logging.error(
-                'Something wrong with location request. Please investigate.')
-            sys.exit(1)
+            raise GMBException(f'Something wrong with location request. Response: {location_raw.text}')
         location_json = location_raw.json()
 
         # If the account has no locations under it
@@ -130,67 +255,68 @@ class Google_My_Business():
         # Looping for all the locations
         if 'nextPageToken' in location_json:
             out_location_list = out_location_list + \
-                self.list_locations(
-                    nextPageToken=location_json['nextPageToken'])
+                                self.list_locations(account_id=account_id,
+                                                    nextPageToken=location_json['nextPageToken'])
 
         return out_location_list
 
-    def list_report_insights(self, account_id, location_id):
-        '''
-        Fetching all the report insights from assigned location
-        '''
+    def list_daily_metrics(self, location_id):
+        """
+        Fetching all the report insights from assigned location.
+        https://developers.google.com/my-business/reference/performance/rest/v1/
+        locations/getDailyMetricsTimeSeries#DailyRange
+        """
+        start_year, start_month, start_day = get_date_from_string(self.start_timestamp)
+        end_year, end_month, end_day = get_date_from_string(self.end_timestamp)
 
-        insight_url = '{}/{}/locations:reportInsights'.format(
-            self.base_url, account_id)
-        header = {
-            'Content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(self.access_token)
-        }
-        payload = {
-            'locationNames': [
-                location_id
-            ],
-            'basicRequest': {
-                'metricRequests': [
-                    {
-                        'metric': 'ALL',
-                        'options': [
-                            'AGGREGATED_DAILY'
-                        ]
-                    }
-                ],
-                'timeRange': {
-                    'startTime': self.start_timestamp,
-                    'endTime': self.end_timestamp
-                }
+        parsed_values = {}
+        for metric in AVAILABLE_DAILY_METRICS:
+            insight_url = self.base_url_profile_performance + f"/{location_id}:getDailyMetricsTimeSeries"
+            params = {
+                "dailyMetric": metric,
+                "dailyRange.startDate.year": start_year,
+                "dailyRange.startDate.month": start_month,
+                "dailyRange.startDate.day": start_day,
+                "dailyRange.endDate.year": end_year,
+                "dailyRange.endDate.month": end_month,
+                "dailyRange.endDate.day": end_day,
             }
-        }
 
-        res_status, insights_raw = self.post_request(
-            insight_url, headers=header, payload=payload)
+            header = {
+                'Content-type': 'application/json',
+                'Authorization': 'Bearer {}'.format(self.access_token)
+            }
 
-        if res_status != 200:
-            logging.error(
-                'Something wrong with report insight request. Please investigate'
-            )
-            sys.exit(1)
+            res_status, insights_raw = self.get_request(url=insight_url, headers=header, params=params)
 
-        # Conditions when the API does not return expected results
-        if 'locationMetrics' in insights_raw.json():
-            insights_json = insights_raw.json()['locationMetrics']
-        else:
-            insights_json = []
+            if res_status != 200:
+                if res_status == 403:
+                    logging.error(f"Cannot fetch daily metrics for location with id {location_id}, response: "
+                                  f"{insights_raw.text}")
+                    return {}
+                raise GMBException(f'Something wrong with report insight request. Response: {insights_raw.text}')
 
-        return insights_json
+            response = insights_raw.json()
+            if 'timeSeries' in response:
+                time_series = response['timeSeries']['datedValues']
 
-    def list_location_related_info(self, location_id, endpoint, nextPageToken=None):
-        '''
-        Fetching all the information associated to the location
-        '''
+                for dated_value in time_series:
+                    date = f"{dated_value['date']['year']}-{dated_value['date']['month']:02d}-" \
+                           f"{dated_value['date']['day']:02d}"
+                    value = int(dated_value.get('value', '0'))
+                    if date not in parsed_values:
+                        parsed_values[date] = {}
+                    parsed_values[date][metric] = value
 
-        out_data = []
+            else:
+                logging.info(f"Metric {metric} did not return any time series.")
 
-        generic_url = '{}/{}/{}'.format(self.base_url, location_id, endpoint)
+        return parsed_values
+
+    def list_reviews(self, account_id, location_id, nextPageToken=None):
+        responses = []
+
+        url = self.base_url + "/" + account_id + "/" + location_id + "/reviews"
         params = {
             'access_token': self.access_token
         }
@@ -198,105 +324,172 @@ class Google_My_Business():
             params['pageToken'] = nextPageToken
 
         # Get review for the location
-        res_status, data_raw = self.get_request(generic_url, params=params)
+        res_status, data_raw = self.get_request(url, params=params)
         if res_status != 200:
-            logging.error(
-                'Something wrong with {} request. Please investigate.'.format(endpoint))
-            sys.exit(1)
+            raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
         data_json = data_raw.json()
+        if 'reviews' in data_json:
+            responses.extend(data_json['reviews'])
 
-        if endpoint == 'media':
-            out_data = data_json['mediaItems'] if data_json.get(
-                'mediaItems') else {}
-        else:
-            try:
-                out_data = data_json[endpoint]
-            except Exception:
-                logging.error(data_json)
-
-        # Looping for all the reviews
-        if 'nextPageToken' in data_json:
-            out_data = out_data + \
-                self.list_location_related_info(
+            if 'nextPageToken' in data_json:
+                responses.extend(self.list_reviews(
+                    account_id=account_id,
                     location_id=location_id,
-                    endpoint=endpoint,
-                    nextPageToken=data_json['nextPageToken'])
+                    nextPageToken=data_json['nextPageToken']))
 
-        return out_data
+            return responses
+        else:
+            logging.warning(f'Reviews for location with id {location_id} not found in response: {data_raw.text}')
+            return []
 
-    def run(self, endpoints=[]):
-        '''
-        Bundle of the request flow
-        '''
+    def list_questions(self, location_id, nextPageToken=None):
+        responses = []
 
-        all_accounts = self.list_accounts()
-        logging.info(f'Accounts found: [{len(all_accounts)}]')
+        url = self.base_url_quanda + "/" + location_id + "/questions"
 
-        # Outputting all the accounts found
-        logging.info('Outputting Accounts...')
-        parser.generic_parser(
-            data_in=all_accounts,
-            parent_obj_name='accounts',
-            primary_key_name='name'
-            # output_columns=self.output_columns['accounts']
-        )
+        params = {
+            'access_token': self.access_token
+        }
+        if nextPageToken:
+            params['pageToken'] = nextPageToken
 
-        # Finding all the accounts available for the authorized account
-        for account in all_accounts:
-            account_id = account['name']
-            # Fetching all the locations available for the entered account
-            all_locations = self.list_locations(account_id=account_id)
-            logging.info('Locations found in Account [{}] - [{}]'.format(
-                account['accountName'], len(all_locations)))
-            logging.info('Outputting Locations...')
-            parser.generic_parser(
-                data_in=all_locations,
-                parent_obj_name='locations',
-                primary_key_name='name'
-                # output_columns=self.output_columns['locations']
-            )
+        # Get review for the location
+        res_status, data_raw = self.get_request(url, params=params)
+        if res_status != 200:
+            if res_status == 400:
+                if data_raw.json()["error"]["details"][0]["reason"] == "UNVERIFIED_LOCATION":
+                    logging.warning(f"Location with id {location_id} is unverified. Cannot fetch questions.")
+            else:
+                logging.warning(f"Cannot fetch questions for location with id {location_id}. Received response: "
+                                f"{data_raw.text}")
+            return []
 
-            # If there are no locations, terminating the application
-            if len(all_locations) == 0:
-                logging.warning(
-                    f'There are no location info under the authorized account [{account["accountName"]}].')
+        data_json = data_raw.json()
+        if data_json.get("questions", None):
+            responses.extend(data_json["questions"])
+            if 'nextPageToken' in data_json:
+                responses.extend(self.list_questions(
+                    location_id=location_id,
+                    nextPageToken=data_json['nextPageToken']))
+        else:
+            logging.info(f"There are no questions for {location_id}")
 
-            # Looping through all the locations
-            for location in all_locations:
-                location_id = location['name']
-                logging.info('Parsing location [{}]...'.format(location_id))
+        return responses
 
-                # Looping through all the requested endpoints
-                for endpoint in endpoints:
-                    logging.info(
-                        'Fetching [{}] - {}...'.format(location_id, endpoint))
-                    # insights endpoint has a different request url and method
-                    if endpoint != 'reportInsights':
-                        data_out = self.list_location_related_info(
-                            location_id=location_id,
-                            endpoint=endpoint)
-                    else:
-                        data_out = self.list_report_insights(
-                            account_id=account_id,
-                            location_id=location_id
-                        )
+    @backoff.on_exception(backoff.expo, GMBException, max_tries=20)
+    def list_media(self, location_id, account_id, nextPageToken=None):
+        responses = []
 
-                    # Ensure the output data file contains data, if not output nothing
-                    if data_out and endpoint != 'reportInsights':
+        url = self.base_url + "/" + account_id + "/" + location_id + "/media"
 
-                        parser.generic_parser(
-                            data_in=data_out,
-                            parent_obj_name=endpoint,
-                            primary_key_name='name'
-                            # output_columns=self.output_columns.get(endpoint)
-                        )
-                    elif data_out and endpoint == 'reportInsights':
-                        parser.insight_parser(
-                            data_in=data_out
-                        )
-                    else:
-                        logging.info(
-                            'No [{}] found - {}'.format(endpoint, location['locationName']))
+        params = {
+            'access_token': self.access_token
+        }
+        if nextPageToken:
+            params['pageToken'] = nextPageToken
 
-        parser.produce_manifest('accounts', ['name'])
-        parser.produce_manifest('locations', ['name'])
+        res_status, data_raw = self.get_request(url, params=params)
+        if res_status != 200:
+            raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
+        if res_status == 503:
+            raise GMBException("Media service is unavailable at the moment.")
+
+        data_json = data_raw.json()
+        if data_json:
+            responses.extend(data_json['mediaItems'])
+            if 'nextPageToken' in data_json:
+                responses.extend(self.list_media(
+                    location_id=location_id,
+                    account_id=account_id,
+                    nextPageToken=data_json['nextPageToken']))
+        else:
+            logging.info(f"There are no media for {location_id}")
+
+        return responses
+
+    def create_temp_files(self, file_name, data_in):
+        """
+        Saves data to json files.
+        """
+        file_output_destination = os.path.join(self.temp_table_destination, file_name)
+        if not os.path.exists(file_output_destination):
+            os.makedirs(file_output_destination)
+
+        if data_in:
+            for row in data_in:
+                filename = os.path.join(file_output_destination, str(uuid.uuid4())+".json")
+                with open(filename, 'w') as outfile:
+                    json.dump(flatten_dict(row), outfile)
+        else:
+            logging.warning(f"File {file_name} is empty. Results will not be stored.")
+
+    def produce_manifest(self, file_name, primary_key):
+        """
+        Dummy function for returning manifest
+        """
+
+        file = '{}{}.csv.manifest'.format(self.default_table_destination, file_name)
+
+        manifest = {
+            'incremental': True,
+            'primary_key': primary_key
+        }
+
+        try:
+            with open(file, 'w') as file_out:
+                json.dump(manifest, file_out)
+        except Exception as e:
+            logging.error("Could not produce output file manifest.")
+            logging.error(e)
+
+    def daily_metrics_parser(self, data_in):
+        """
+        Parser dedicated for fetching location metrics
+        """
+
+        data_out = []
+        for location_id, date_data in data_in.items():
+            for date, metrics in date_data.items():
+                for metric, value in metrics.items():
+                    data_out.append({
+                        "location_id": location_id,
+                        "date": date,
+                        "metric": metric,
+                        "value": value
+                    })
+
+        self.create_temp_files('daily_metrics', data_out)
+
+    def save_resulting_files(self):
+        """Produces manifest and saves column names to statefile"""
+
+        filenames = [f.name for f in os.scandir(self.temp_table_destination) if f.is_dir()]
+
+        for file_name in filenames:
+
+            if self.tables_columns.get(file_name, {}):
+                fieldnames = self.tables_columns.get(file_name)
+            else:
+                fieldnames = []
+
+            temp_dir = os.path.join(self.temp_table_destination, file_name)
+            temp_files = self.list_json_files(temp_dir)
+
+            tgt_path = os.path.join(self.default_table_destination, file_name+".csv")
+            with ElasticDictWriter(tgt_path, fieldnames) as wr:
+                wr.writeheader()
+                for file in temp_files:
+                    with open(file, 'r') as f:
+                        data = json.load(f)
+                    wr.writerow(data)
+
+            self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
+            self.tables_columns[file_name] = wr.fieldnames
+
+    @staticmethod
+    def list_json_files(target_dir):
+        json_files = []
+        for filename in os.listdir(target_dir):
+            if filename.endswith('.json'):
+                json_files.append(os.path.join(target_dir, filename))
+        return json_files

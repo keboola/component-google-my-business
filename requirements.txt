@@ -1,6 +1,9 @@
 https://bitbucket.org/kds_consulting_team/keboola-python-util-lib/get/0.2.0.zip#egg=kbc
+keboola.component==1.4.0
+keboola.csvwriter
 logging_gelf==0.0.18
 mock
 freezegun
-pandas==0.25.3
+pandas==1.4.3
 regex==2019.11.1
+backoff

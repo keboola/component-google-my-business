@@ -1,23 +1,17 @@
-'''
-Template Component main class.
-
-'''
-
 import logging
 import logging_gelf.handlers
 import logging_gelf.formatters
-import sys
 import os
 import json
 import datetime  # noqa
 import dateparser
 import requests
+import shutil
 
-from kbc.env_handler import KBCEnvHandler
-from kbc.result import KBCTableDef  # noqa
-from kbc.result import ResultWriter  # noqa
+from keboola.component.base import ComponentBase, sync_action
+from keboola.component.exceptions import UserException
 
-from google_my_business import Google_My_Business  # noqa
+from google_my_business import GoogleMyBusiness, GMBException
 
 
 # configuration variables
@@ -26,13 +20,7 @@ KEY_PERIOD_FROM = 'period_from'
 KEY_ENDPOINTS = 'endpoints'
 
 MANDATORY_PARS = [KEY_ENDPOINTS, KEY_API_TOKEN]
-MANDATORY_IMAGE_PARS = []
 
-# Default Table Output Destination
-DEFAULT_TABLE_SOURCE = "/data/in/tables/"
-DEFAULT_TABLE_DESTINATION = "/data/out/tables/"
-DEFAULT_FILE_DESTINATION = "/data/out/files/"
-DEFAULT_FILE_SOURCE = "/data/in/files/"
 
 # Logging
 logging.basicConfig(
@@ -52,36 +40,64 @@ if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
     # remove default logging to stdout
     logger.removeHandler(logger.handlers[0])
 
-APP_VERSION = '0.0.6'
 
+class Component(ComponentBase):
 
-class Component(KBCEnvHandler):
+    def __init__(self):
+        super().__init__()
 
-    def __init__(self, debug=False):
-        KBCEnvHandler.__init__(self, MANDATORY_PARS)
+    def run(self):
         """
-        # override debug from config
-        if self.cfg_params.get('debug'):
-            debug = True
+        Main execution code
+        """
+        params = self.configuration.parameters
+
+        authorization = self.configuration.config_data["authorization"]
+        oauth_token = self.get_oauth_token(authorization)
+
+        endpoints = params[KEY_ENDPOINTS]
+        logging.info(f"Component will process following endpoints: {endpoints}")
+        if not endpoints:
+            raise UserException('Please select an endpoint.')
+
+        # Validating input date parameters
+        start_date_str = params['request_range'].get('start_date', '7 days ago')
+        end_date_str = params['request_range'].get('end_date', 'today')
+        start_date_form = dateparser.parse(start_date_str)
+        end_date_form = dateparser.parse(end_date_str)
+        if start_date_form > end_date_form:
+            raise UserException('Start Date cannot exceed End Date. Please re-enter [Request Range].')
+        start_date_str = start_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
+        end_date_str = end_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
+        logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
+
+        statefile = self.get_state_file()
+        if statefile:
+            default_columns = statefile
+            logging.info(f"Columns loaded from statefile: {default_columns}")
         else:
-            debug = False
+            default_columns = []
 
-        self.set_default_logger('DEBUG' if debug else 'INFO')
-        """
-        logging.info('Running version %s', APP_VERSION)
-        logging.info('Loading configuration...')
+        self.create_temp_folder()
 
+        gmb = GoogleMyBusiness(
+            access_token=oauth_token,
+            start_timestamp=start_date_str,
+            end_timestamp=end_date_str,
+            data_folder_path=self.data_folder_path,
+            default_columns=default_columns)
         try:
-            self.validate_config()
-            self.validate_image_parameters(MANDATORY_IMAGE_PARS)
-        except ValueError as e:
-            logging.error(e)
-            exit(1)
+            gmb.process(endpoints=endpoints)
+        except GMBException as e:
+            raise UserException(e)
 
-    def get_oauth_token(self, config):
-        '''
-        Extracting Oauth Token out of Authorization
-        '''
+        self.write_state_file(gmb.tables_columns)
+        self.delete_temp_folder()
+
+        logging.info("Extraction finished")
+
+    @staticmethod
+    def get_oauth_token(config):
         data = config['oauth_api']['credentials']
         data_encrypted = json.loads(
             config['oauth_api']['credentials']['#data'])
@@ -104,77 +120,49 @@ class Component(KBCEnvHandler):
             url=url, headers=header, data=payload)
 
         if response.status_code != 200:
-            logging.error(
-                "Unable to refresh access token. Please reset the account authorization.")
-            sys.exit(1)
+            raise UserException(f"Unable to refresh access token. "
+                                f"Please reset the account authorization: {response.text}")
 
         data_r = response.json()
-        token = data_r["access_token"]
+        return data_r["access_token"]
 
-        return token
+    def create_temp_folder(self):
+        temp_path = os.path.join(self.data_folder_path, "temp")
+        if not os.path.exists(temp_path):
+            logging.info("creating temp folder")
+            os.makedirs(temp_path)
 
-    def run(self):
-        '''
-        Main execution code
-        '''
+    def delete_temp_folder(self):
+        temp_path = os.path.join(self.data_folder_path, "temp")
+        try:
+            shutil.rmtree(temp_path)
+        except OSError as e:
+            logging.error(f"Error deleting {temp_path}: {e}")
 
-        # Activate when OAuth in KBC is ready
-        # Get Authorization Token
-        authorization = self.configuration.get_authorization()
+    @sync_action('testConnection')
+    def test_connection(self):
+        authorization = self.configuration.config_data["authorization"]
         oauth_token = self.get_oauth_token(authorization)
-        # logging.info(oauth_token)
-
-        # Configuration Parameters
-        params = self.cfg_params  # noqa
-        endpoints = params['endpoints']
-
-        # Validating input date parameters
-        request_range = params['request_range']
-        start_date_form = dateparser.parse(request_range['start_date'])
-        end_date_form = dateparser.parse(request_range['end_date'])
-        if start_date_form == '':
-            start_date_form = '7 days ago'
-        if end_date_form == '':
-            end_date_form = 'today'
-        day_diff = (end_date_form-start_date_form).days
-        if day_diff < 0:
-            logging.error(
-                'Start Date cannot exceed End Date. Please re-enter [Request Range].')
-            sys.exit(1)
-
-        start_date_str = start_date_form.strftime(
-            '%Y-%m-%d')+'T00:00:00.000000Z'
-        end_date_str = end_date_form.strftime('%Y-%m-%d')+'T00:00:00.000000Z'
-        logging.info('Request Range: {} to {}'.format(
-            start_date_str, end_date_str))
-
-        # If no endpoints are selected
-        if len(endpoints) == 0:
-            logging.error('Please select an endpoint.')
-            sys.exit(1)
-
-        # all_endpoints = []
-        # for i in endpoints:
-        #     if i['endpoint'] not in all_endpoints:
-        #         all_endpoints.append(i['endpoint'])
-        all_endpoints = endpoints
-
-        gmb = Google_My_Business(
+        gmb = GoogleMyBusiness(
             access_token=oauth_token,
-            start_timestamp=start_date_str,
-            end_timestamp=end_date_str)
-        gmb.run(endpoints=all_endpoints)
-
-        logging.info("Extraction finished")
+            data_folder_path=self.data_folder_path)
+        try:
+            gmb.test_connection()
+        except GMBException as e:
+            raise UserException(e)
 
 
 """
         Main entrypoint
 """
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        debug = sys.argv[1]
-    else:
-        debug = True
-    comp = Component(debug)
-    comp.run()
+    try:
+        comp = Component()
+        # this triggers the run method by default and is controlled by the configuration.action parameter
+        comp.execute_action()
+    except UserException as exc:
+        logging.exception(exc)
+        exit(1)
+    except Exception as exc:
+        logging.exception(exc)
+        exit(2)
