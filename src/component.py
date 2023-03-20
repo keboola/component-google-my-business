@@ -13,14 +13,12 @@ from keboola.component.exceptions import UserException
 
 from google_my_business import GoogleMyBusiness, GMBException
 
-
 # configuration variables
 KEY_API_TOKEN = '#api_token'
 KEY_PERIOD_FROM = 'period_from'
 KEY_ENDPOINTS = 'endpoints'
 
 MANDATORY_PARS = [KEY_ENDPOINTS, KEY_API_TOKEN]
-
 
 # Logging
 logging.basicConfig(
@@ -29,7 +27,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S")
 
 if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
-
     logger = logging.getLogger()
     logging_gelf_handler = logging_gelf.handlers.GELFTCPSocketHandler(
         host=os.getenv('KBC_LOGGER_ADDR'), port=int(os.getenv('KBC_LOGGER_PORT')))
@@ -175,9 +172,6 @@ class Component(ComponentBase):
                 )
 
         return results
-
-
-
 
 
 """
