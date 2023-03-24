@@ -12,11 +12,9 @@
          "propertyOrder":1
       },
       "accounts":{
-         "type":"array",
+         "type":"string",
          "title":"Accounts",
-         "enum":[
-
-         ],
+         "enum":[],
          "description":"Account for which will the component fetch results.",
          "propertyOrder":2,
          "options":{
