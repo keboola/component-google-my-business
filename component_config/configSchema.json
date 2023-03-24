@@ -20,9 +20,6 @@
          "description":"Account for which will the component fetch results.",
          "propertyOrder":2,
          "options":{
-            "dependencies":{
-               "model_type":"predefined"
-            },
             "async":{
                "label":"List available accounts",
                "action":"listAccounts"
