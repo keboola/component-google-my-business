@@ -17,6 +17,7 @@ from google_my_business import GoogleMyBusiness, GMBException
 KEY_API_TOKEN = '#api_token'
 KEY_PERIOD_FROM = 'period_from'
 KEY_ENDPOINTS = 'endpoints'
+KEY_ACCOUNTS = 'accounts'
 
 MANDATORY_PARS = [KEY_ENDPOINTS, KEY_API_TOKEN]
 
@@ -67,6 +68,7 @@ class Component(ComponentBase):
         start_date_str = start_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
         end_date_str = end_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
         logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
+        accounts = params.get(KEY_ACCOUNTS, {})
 
         statefile = self.get_state_file()
         if statefile:
@@ -82,7 +84,9 @@ class Component(ComponentBase):
             start_timestamp=start_date_str,
             end_timestamp=end_date_str,
             data_folder_path=self.data_folder_path,
-            default_columns=default_columns)
+            default_columns=default_columns,
+            accounts=accounts
+        )
         try:
             gmb.process(endpoints=endpoints)
         except GMBException as e:

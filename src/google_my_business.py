@@ -84,7 +84,8 @@ def backoff_custom():
 
 
 class GoogleMyBusiness:
-    def __init__(self, access_token, data_folder_path, default_columns=None, start_timestamp=None, end_timestamp=None):
+    def __init__(self, access_token, data_folder_path, default_columns=None, start_timestamp=None, end_timestamp=None,
+                 accounts=None):
         if default_columns is None:
             default_columns = []
         self.output_columns = None
@@ -108,6 +109,7 @@ class GoogleMyBusiness:
         self.daily_metrics = {}
 
         self.tables_columns = default_columns if default_columns else {}
+        self.selected_accounts = accounts if accounts else []
         self.account_list = []
 
     def test_connection(self):
@@ -117,10 +119,21 @@ class GoogleMyBusiness:
         except Exception as e:
             raise GMBException(e)
 
+    @staticmethod
+    def select_entries(list1, list_all):
+        relevant_entries = []
+        for item in list_all:
+            if item['name'] in list1:
+                relevant_entries.append(item)
+        return relevant_entries
+
     def process(self, endpoints=None):
 
         self.list_accounts()
-        logging.info(f'Accounts found: [{len(self.account_list)}]')
+        if self.selected_accounts:
+            self.account_list = self.select_entries(self.selected_accounts, self.account_list)
+
+        logging.info(f'Component will process following accounts: {self.account_list}')
 
         # Outputting all the accounts found
         logging.info('Outputting Accounts...')

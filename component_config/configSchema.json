@@ -12,7 +12,7 @@
          "propertyOrder":1
       },
       "accounts":{
-         "type":"string",
+         "type":"array",
          "title":"Accounts",
          "enum":[
 
