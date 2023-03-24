@@ -11,6 +11,22 @@
         "format": "test-connection",
         "propertyOrder": 1
     },
+        "accounts": {
+      "type": "string",
+      "title": "Accounts",
+      "enum": [],
+      "description": "Account for which will the component fetch results.",
+      "propertyOrder": 2,
+      "options": {
+        "dependencies": {
+          "model_type": "predefined"
+        },
+        "async": {
+          "label": "List available accounts",
+          "action": "listAccounts"
+        }
+      }
+    },
         "endpoints": {
             "type": "array",
             "format": "checkbox",
