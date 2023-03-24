@@ -186,13 +186,14 @@ class GoogleMyBusiness:
 
         self.save_resulting_files()
 
+    @backoff.on_exception(backoff.expo, Exception, max_tries=3, multiplier=15, max_value=45)
     def get_request(self, url, headers=None, params=None):
-        """
-        Base GET request
-        """
-
         res = self.session.get(url=url, headers=headers, params=params)
-
+        if res.status_code == 429:
+            # Raise an exception to trigger the retry logic
+            raise Exception("Rate limit exceeded. Retrying...")
+        elif res.status_code != 200:
+            raise Exception(f"Request failed with status code {res.status_code}")
         return res.status_code, res
 
     def list_accounts(self, nextPageToken=None):
@@ -215,13 +216,6 @@ class GoogleMyBusiness:
             raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
 
         account_json = account_raw.json()
-        """
-        for account in account_json["accounts"]:
-            if account["type"] != "LOCATION_GROUP":
-                self.account_list.append(account)
-        print(self.account_list)
-        exit()
-        """
         self.account_list = account_json['accounts']
 
         # Looping for all the accounts
@@ -229,7 +223,6 @@ class GoogleMyBusiness:
             self.account_list = self.account_list + \
                                 self.list_accounts(nextPageToken=account_json['nextPageToken'])
 
-    @backoff.on_exception(backoff.expo, GMBException, max_tries=5)
     def list_locations(self, account_id, nextPageToken=None):
         """
         Fetching all locations associated to the account_id
@@ -380,7 +373,6 @@ class GoogleMyBusiness:
 
         return responses
 
-    @backoff.on_exception(backoff.expo, GMBException, max_tries=20)
     def list_media(self, location_id, account_id, nextPageToken=None):
         responses = []
 
