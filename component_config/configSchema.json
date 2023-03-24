@@ -1,81 +1,83 @@
 {
-    "type": "object",
-    "title": "Parameters",
-    "required": [
-        "endpoints",
-        "request_range"
-    ],
-    "properties": {
-        "test_connection": {
-        "type": "button",
-        "format": "test-connection",
-        "propertyOrder": 1
-    },
-        "accounts": {
-      "type": "string",
-      "title": "Accounts",
-      "enum": [],
-      "description": "Account for which will the component fetch results.",
-      "propertyOrder": 2,
-      "options": {
-        "dependencies": {
-          "model_type": "predefined"
-        },
-        "async": {
-          "label": "List available accounts",
-          "action": "listAccounts"
-        }
-      }
-    },
-        "endpoints": {
-            "type": "array",
-            "format": "checkbox",
-            "title": "Endpoints",
-            "uniqueItems": true,
-            "items": {
-                "enum": [
-                    "dailyMetrics",
-                    "reviews",
-                    "media",
-                    "questions"
-                ],
-                "type": "string",
-                "options": {
-                    "enum_titles": [
-                        "Daily Metrics",
-                        "Reviews",
-                        "Media",
-                        "Questions"
-                    ]
-                }
+   "type":"object",
+   "title":"Parameters",
+   "required":[
+      "endpoints",
+      "request_range"
+   ],
+   "properties":{
+      "test_connection":{
+         "type":"button",
+         "format":"test-connection",
+         "propertyOrder":1
+      },
+      "accounts":{
+         "type":"string",
+         "title":"Accounts",
+         "enum":[
+
+         ],
+         "description":"Account for which will the component fetch results.",
+         "propertyOrder":2,
+         "options":{
+            "dependencies":{
+               "model_type":"predefined"
             },
-            "propertyOrder": 100
-        },
-        "request_range": {
-            "type": "object",
-            "required": [
-                "start_date",
-                "end_date"
+            "async":{
+               "label":"List available accounts",
+               "action":"listAccounts"
+            }
+         }
+      },
+      "endpoints":{
+         "type":"array",
+         "format":"checkbox",
+         "title":"Endpoints",
+         "uniqueItems":true,
+         "items":{
+            "enum":[
+               "dailyMetrics",
+               "reviews",
+               "media",
+               "questions"
             ],
-            "title": "Request Range",
-            "description": "This configuration will only affect [Location Insights] endpoint. Google My Business API has limited the maximum range of request date to 18 months. By default, the component will set the date range to fetch data from 1 week ago to the date of the component run.",
-            "properties": {
-                "start_date": {
-                    "type": "string",
-                    "title": "Start Date",
-                    "default": "7 days ago",
-                    "propertyOrder": 100,
-                    "description": "default: 7 days ago"
-                },
-                "end_date": {
-                    "type": "string",
-                    "title": "End Date",
-                    "default": "today",
-                    "propertyOrder": 200,
-                    "description": "default: today"
-                }
+            "type":"string",
+            "options":{
+               "enum_titles":[
+                  "Daily Metrics",
+                  "Reviews",
+                  "Media",
+                  "Questions"
+               ]
+            }
+         },
+         "propertyOrder":3
+      },
+      "request_range":{
+         "type":"object",
+         "required":[
+            "start_date",
+            "end_date"
+         ],
+         "title":"Request Range",
+         "description":"This configuration will only affect [Location Insights] endpoint. Google My Business API has limited the maximum range of request date to 18 months. By default, the component will set the date range to fetch data from 1 week ago to the date of the component run.",
+         "properties":{
+            "start_date":{
+               "type":"string",
+               "title":"Start Date",
+               "default":"7 days ago",
+               "propertyOrder":10,
+               "description":"default: 7 days ago"
             },
-            "propertyOrder": 200
-        }
-    }
+            "end_date":{
+               "type":"string",
+               "title":"End Date",
+               "default":"today",
+               "propertyOrder":20,
+               "description":"default: today"
+            }
+         },
+         "propertyOrder":4
+      }
+   }
 }

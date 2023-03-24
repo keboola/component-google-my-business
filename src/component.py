@@ -161,17 +161,17 @@ class Component(ComponentBase):
         except GMBException:
             raise UserException("failed")
 
-        results = []
+        accounts = []
         for account in gmb.account_list:
             if account.get("name", None) and account.get("accountName", None):
-                results.append(
+                accounts.append(
                     {
                         "label": account.get("accountName"),
                         "value": account.get("name")
                     }
                 )
 
-        return results
+        return accounts
 
 
 """
