@@ -85,11 +85,12 @@ def backoff_custom():
 
 class GoogleMyBusiness:
     def __init__(self, access_token, data_folder_path, default_columns=None, start_timestamp=None, end_timestamp=None,
-                 accounts=None):
+                 accounts=None, incremental=True):
         if default_columns is None:
             default_columns = []
         self.output_columns = None
         self.access_token = access_token
+        self.incremental = incremental
         self.base_url = 'https://mybusiness.googleapis.com/v4'
         self.base_url_v1 = "https://mybusiness.googleapis.com/v1"
         self.base_url_profile_performance = "https://businessprofileperformance.googleapis.com/v1"
@@ -238,13 +239,6 @@ class GoogleMyBusiness:
             raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
 
         account_json = account_raw.json()
-        """
-        for account in account_json["accounts"]:
-            if account["type"] != "LOCATION_GROUP":
-                self.account_list.append(account)
-        print(self.account_list)
-        exit()
-        """
         self.account_list = account_json['accounts']
 
         # Looping for all the accounts
