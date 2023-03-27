@@ -60,7 +60,7 @@
             "end_date"
          ],
          "title":"Request Range",
-         "description":"This configuration will only affect [Location Insights] endpoint. Google My Business API has limited the maximum range of request date to 18 months. By default, the component will set the date range to fetch data from 1 week ago to the date of the component run.",
+         "description":"This configuration will only affect [Daily Metrics] endpoint.",
          "properties":{
             "start_date":{
                "type":"string",
