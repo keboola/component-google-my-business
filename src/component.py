@@ -18,6 +18,8 @@ KEY_API_TOKEN = '#api_token'
 KEY_PERIOD_FROM = 'period_from'
 KEY_ENDPOINTS = 'endpoints'
 KEY_ACCOUNTS = 'accounts'
+KEY_GROUP_DESTINATION = 'destination'
+KEY_LOAD_TYPE = 'load_type'
 
 MANDATORY_PARS = [KEY_ENDPOINTS, KEY_API_TOKEN]
 
@@ -70,6 +72,14 @@ class Component(ComponentBase):
         logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
         accounts = params.get(KEY_ACCOUNTS, {})
 
+        destination_params = params.get(KEY_GROUP_DESTINATION, {})
+        if destination_params:
+            incremental_param = destination_params.get(KEY_LOAD_TYPE, {})
+            if incremental_param == 'full_load':
+                incremental = False
+            else:
+                incremental = True
+
         statefile = self.get_state_file()
         if statefile:
             default_columns = statefile
@@ -85,7 +95,8 @@ class Component(ComponentBase):
             end_timestamp=end_date_str,
             data_folder_path=self.data_folder_path,
             default_columns=default_columns,
-            accounts=accounts
+            accounts=accounts,
+            incremental=incremental
         )
         try:
             gmb.process(endpoints=endpoints)

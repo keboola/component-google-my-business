@@ -452,7 +452,7 @@ class GoogleMyBusiness:
         file = '{}{}.csv.manifest'.format(self.default_table_destination, file_name)
 
         manifest = {
-            'incremental': True,
+            'incremental': self.incremental,
             'primary_key': primary_key
         }
 
