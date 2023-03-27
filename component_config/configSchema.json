@@ -1,60 +1,106 @@
 {
-    "type": "object",
-    "title": "Parameters",
-    "required": [
-        "endpoints",
-        "request_range"
-    ],
-    "properties": {
-        "endpoints": {
-            "type": "array",
-            "format": "checkbox",
-            "title": "Endpoints",
-            "uniqueItems": true,
-            "items": {
-                "enum": [
-                    "dailyMetrics",
-                    "reviews",
-                    "media",
-                    "questions"
-                ],
-                "type": "string",
-                "options": {
-                    "enum_titles": [
-                        "Daily Metrics",
-                        "Reviews",
-                        "Media",
-                        "Questions"
-                    ]
-                }
-            },
-            "propertyOrder": 100
-        },
-        "request_range": {
-            "type": "object",
-            "required": [
-                "start_date",
-                "end_date"
-            ],
-            "title": "Request Range",
-            "description": "This configuration will only affect [Location Insights] endpoint. Google My Business API has limited the maximum range of request date to 18 months. By default, the component will set the date range to fetch data from 1 week ago to the date of the component run.",
-            "properties": {
-                "start_date": {
-                    "type": "string",
-                    "title": "Start Date",
-                    "default": "7 days ago",
-                    "propertyOrder": 100,
-                    "description": "default: 7 days ago"
-                },
-                "end_date": {
-                    "type": "string",
-                    "title": "End Date",
-                    "default": "today",
-                    "propertyOrder": 200,
-                    "description": "default: today"
-                }
-            },
-            "propertyOrder": 200
+   "type":"object",
+   "title":"Parameters",
+   "required":[
+      "endpoints",
+      "request_range"
+   ],
+   "properties":{
+"accounts": {
+      "type": "array",
+       "format": "select",
+       "items": {
+            "enum": [],
+            "type": "string"
+          },
+      "uniqueItems": true,
+      "title": "Accounts",
+      "options": {
+        "async": {
+          "label": "List available accounts",
+          "action": "listAccounts"
         }
+      },
+      "description": "Accounts for which will the component fetch results.",
+      "propertyOrder": 2
+    },
+      "endpoints":{
+         "type":"array",
+         "format":"checkbox",
+         "title":"Endpoints",
+         "uniqueItems":true,
+         "items":{
+            "enum":[
+               "dailyMetrics",
+               "reviews",
+               "media",
+               "questions"
+            ],
+            "type":"string",
+            "options":{
+               "enum_titles":[
+                  "Daily Metrics",
+                  "Reviews",
+                  "Media",
+                  "Questions"
+               ]
+            }
+         },
+         "propertyOrder":3
+      },
+      "request_range":{
+         "type":"object",
+         "required":[
+            "start_date",
+            "end_date"
+         ],
+         "title":"Request Range",
+         "description":"This configuration will only affect [Daily Metrics] endpoint.",
+         "properties":{
+            "start_date":{
+               "type":"string",
+               "title":"Start Date",
+               "default":"7 days ago",
+               "propertyOrder":10,
+               "description":"default: 7 days ago"
+            },
+            "end_date":{
+               "type":"string",
+               "title":"End Date",
+               "default":"today",
+               "propertyOrder":20,
+               "description":"default: today"
+            }
+         },
+         "propertyOrder":4
+      },
+         "destination": {
+      "title": "Destination",
+      "type": "object",
+      "propertyOrder": 5,
+      "required": [
+        "load_type"
+      ],
+      "properties": {
+        "load_type": {
+          "type": "string",
+          "enum": [
+            "full_load",
+            "incremental_load"
+          ],
+          "options": {
+            "enum_titles": [
+              "Full Load",
+              "Incremental Load"
+            ]
+          },
+          "default": "full_load",
+          "format": "checkbox",
+          "title": "Load Type",
+          "description": "If Full load is used, the destination table will be overwritten every run. If incremental load is used, data will be upserted into the destination table. Tables with a primary key will have rows updated, tables without a primary key will have rows appended.",
+          "propertyOrder": 20
+        }
+      }
     }
+   }
 }

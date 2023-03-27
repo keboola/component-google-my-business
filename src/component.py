@@ -1,9 +1,6 @@
 import logging
-import logging_gelf.handlers
-import logging_gelf.formatters
 import os
 import json
-import datetime  # noqa
 import dateparser
 import requests
 import shutil
@@ -13,32 +10,15 @@ from keboola.component.exceptions import UserException
 
 from google_my_business import GoogleMyBusiness, GMBException
 
-
 # configuration variables
 KEY_API_TOKEN = '#api_token'
 KEY_PERIOD_FROM = 'period_from'
 KEY_ENDPOINTS = 'endpoints'
+KEY_ACCOUNTS = 'accounts'
+KEY_GROUP_DESTINATION = 'destination'
+KEY_LOAD_TYPE = 'load_type'
 
 MANDATORY_PARS = [KEY_ENDPOINTS, KEY_API_TOKEN]
-
-
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)-8s : [line:%(lineno)3s] %(message)s',
-    datefmt="%Y-%m-%d %H:%M:%S")
-
-if 'KBC_LOGGER_ADDR' in os.environ and 'KBC_LOGGER_PORT' in os.environ:
-
-    logger = logging.getLogger()
-    logging_gelf_handler = logging_gelf.handlers.GELFTCPSocketHandler(
-        host=os.getenv('KBC_LOGGER_ADDR'), port=int(os.getenv('KBC_LOGGER_PORT')))
-    logging_gelf_handler.setFormatter(
-        logging_gelf.formatters.GELFFormatter(null_character=True))
-    logger.addHandler(logging_gelf_handler)
-
-    # remove default logging to stdout
-    logger.removeHandler(logger.handlers[0])
 
 
 class Component(ComponentBase):
@@ -51,7 +31,6 @@ class Component(ComponentBase):
         Main execution code
         """
         params = self.configuration.parameters
-
         authorization = self.configuration.config_data["authorization"]
         oauth_token = self.get_oauth_token(authorization)
 
@@ -63,20 +42,22 @@ class Component(ComponentBase):
         # Validating input date parameters
         start_date_str = params['request_range'].get('start_date', '7 days ago')
         end_date_str = params['request_range'].get('end_date', 'today')
-        start_date_form = dateparser.parse(start_date_str)
-        end_date_form = dateparser.parse(end_date_str)
+        start_date_form, end_date_form = dateparser.parse(start_date_str), dateparser.parse(end_date_str)
         if start_date_form > end_date_form:
             raise UserException('Start Date cannot exceed End Date. Please re-enter [Request Range].')
         start_date_str = start_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
         end_date_str = end_date_form.strftime('%Y-%m-%dT00:00:00.000000Z')
+
         logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
+        accounts = params.get(KEY_ACCOUNTS, {})
+
+        destination_params = params.get(KEY_GROUP_DESTINATION, {})
+        incremental = destination_params.get(KEY_LOAD_TYPE) != 'full_load' if destination_params else False
 
         statefile = self.get_state_file()
+        default_columns = statefile or []
         if statefile:
-            default_columns = statefile
             logging.info(f"Columns loaded from statefile: {default_columns}")
-        else:
-            default_columns = []
 
         self.create_temp_folder()
 
@@ -85,7 +66,10 @@ class Component(ComponentBase):
             start_timestamp=start_date_str,
             end_timestamp=end_date_str,
             data_folder_path=self.data_folder_path,
-            default_columns=default_columns)
+            default_columns=default_columns,
+            accounts=accounts,
+            incremental=incremental
+        )
         try:
             gmb.process(endpoints=endpoints)
         except GMBException as e:
@@ -139,17 +123,30 @@ class Component(ComponentBase):
         except OSError as e:
             logging.error(f"Error deleting {temp_path}: {e}")
 
-    @sync_action('testConnection')
-    def test_connection(self):
+    @sync_action('listAccounts')
+    def list_accounts(self):
         authorization = self.configuration.config_data["authorization"]
         oauth_token = self.get_oauth_token(authorization)
+
         gmb = GoogleMyBusiness(
             access_token=oauth_token,
             data_folder_path=self.data_folder_path)
         try:
-            gmb.test_connection()
-        except GMBException as e:
-            raise UserException(e)
+            gmb.process(endpoints=["accounts"])
+        except GMBException:
+            raise UserException("failed")
+
+        accounts = []
+        for account in gmb.account_list:
+            if account.get("name", None) and account.get("accountName", None):
+                accounts.append(
+                    {
+                        "label": account.get("accountName"),
+                        "value": account.get("name")
+                    }
+                )
+
+        return accounts
 
 
 """

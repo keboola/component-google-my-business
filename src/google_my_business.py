@@ -77,12 +77,20 @@ class GMBException(Exception):
     pass
 
 
+def backoff_custom():
+    delays = [15, 30, 45]
+    for delay in delays:
+        yield delay
+
+
 class GoogleMyBusiness:
-    def __init__(self, access_token, data_folder_path, default_columns=None, start_timestamp=None, end_timestamp=None):
+    def __init__(self, access_token, data_folder_path, default_columns=None, start_timestamp=None, end_timestamp=None,
+                 accounts=None, incremental=True):
         if default_columns is None:
             default_columns = []
         self.output_columns = None
         self.access_token = access_token
+        self.incremental = incremental
         self.base_url = 'https://mybusiness.googleapis.com/v4'
         self.base_url_v1 = "https://mybusiness.googleapis.com/v1"
         self.base_url_profile_performance = "https://businessprofileperformance.googleapis.com/v1"
@@ -102,15 +110,31 @@ class GoogleMyBusiness:
         self.daily_metrics = {}
 
         self.tables_columns = default_columns if default_columns else {}
+        self.selected_accounts = accounts if accounts else []
         self.account_list = []
 
     def test_connection(self):
-        self.list_accounts()
+        try:
+            logging.info("hello")
+            self.list_accounts()
+        except Exception as e:
+            raise GMBException(e)
+
+    @staticmethod
+    def select_entries(list1, list_all):
+        relevant_entries = []
+        for item in list_all:
+            if item['name'] in list1:
+                relevant_entries.append(item)
+        return relevant_entries
 
     def process(self, endpoints=None):
 
         self.list_accounts()
-        logging.info(f'Accounts found: [{len(self.account_list)}]')
+        if self.selected_accounts:
+            self.account_list = self.select_entries(self.selected_accounts, self.account_list)
+
+        logging.info(f'Component will process following accounts: {self.account_list}')
 
         # Outputting all the accounts found
         logging.info('Outputting Accounts...')
@@ -182,13 +206,17 @@ class GoogleMyBusiness:
 
         self.save_resulting_files()
 
+    @backoff.on_exception(backoff_custom, Exception, max_tries=3)
     def get_request(self, url, headers=None, params=None):
-        """
-        Base GET request
-        """
-
         res = self.session.get(url=url, headers=headers, params=params)
-
+        if res.status_code == 429:
+            # Raise an exception to trigger the retry logic
+            raise Exception("Rate limit exceeded. Retrying...")
+        elif res.status_code in [400, 403, 500]:
+            # Ignore error 403 and return the status code and response object
+            return res.status_code, res
+        elif res.status_code != 200:
+            raise Exception(f"Request failed with status code {res.status_code}")
         return res.status_code, res
 
     def list_accounts(self, nextPageToken=None):
@@ -211,13 +239,6 @@ class GoogleMyBusiness:
             raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
 
         account_json = account_raw.json()
-        """
-        for account in account_json["accounts"]:
-            if account["type"] != "LOCATION_GROUP":
-                self.account_list.append(account)
-        print(self.account_list)
-        exit()
-        """
         self.account_list = account_json['accounts']
 
         # Looping for all the accounts
@@ -431,7 +452,7 @@ class GoogleMyBusiness:
         file = '{}{}.csv.manifest'.format(self.default_table_destination, file_name)
 
         manifest = {
-            'incremental': True,
+            'incremental': self.incremental,
             'primary_key': primary_key
         }
 
