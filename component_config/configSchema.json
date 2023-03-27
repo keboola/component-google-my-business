@@ -6,11 +6,6 @@
       "request_range"
    ],
    "properties":{
-      "test_connection":{
-         "type":"button",
-         "format":"test-connection",
-         "propertyOrder":1
-      },
 "accounts": {
       "type": "array",
        "format": "select",

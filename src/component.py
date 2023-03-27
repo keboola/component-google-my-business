@@ -124,18 +124,6 @@ class Component(ComponentBase):
         except OSError as e:
             logging.error(f"Error deleting {temp_path}: {e}")
 
-    @sync_action('testConnection')
-    def test_connection(self):
-        authorization = self.configuration.config_data["authorization"]
-        oauth_token = self.get_oauth_token(authorization)
-        gmb = GoogleMyBusiness(
-            access_token=oauth_token,
-            data_folder_path=self.data_folder_path)
-        try:
-            gmb.test_connection()
-        except GMBException:
-            raise UserException("failed")
-
     @sync_action('listAccounts')
     def list_accounts(self):
         authorization = self.configuration.config_data["authorization"]
