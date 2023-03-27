@@ -11,19 +11,24 @@
          "format":"test-connection",
          "propertyOrder":1
       },
-      "accounts":{
-         "type":"string",
-         "title":"Accounts",
-         "enum":[],
-         "description":"Account for which will the component fetch results.",
-         "propertyOrder":2,
-         "options":{
-            "async":{
-               "label":"List available accounts",
-               "action":"listAccounts"
-            }
-         }
+"accounts": {
+      "type": "array",
+       "format": "select",
+       "items": {
+            "enum": [],
+            "type": "string"
+          },
+      "uniqueItems": true,
+      "title": "Accounts",
+      "options": {
+        "async": {
+          "label": "List available accounts",
+          "action": "listAccounts"
+        }
       },
+      "description": "Accounts for which will the component fetch results.",
+      "propertyOrder": 2
+    },
       "endpoints":{
          "type":"array",
          "format":"checkbox",
