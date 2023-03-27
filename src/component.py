@@ -1,7 +1,6 @@
 import logging
 import os
 import json
-import datetime  # noqa
 import dateparser
 import requests
 import shutil
