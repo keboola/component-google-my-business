@@ -141,16 +141,15 @@ class Component(ComponentBase):
                                 "management rights.")
 
         accounts = []
-        for account in gmb.account_list:
-            if account.get("name", None) and account.get("accountName", None):
-                accounts.append(
-                    {
-                        "label": account.get("accountName"),
-                        "value": account.get("name")
-                    }
-                )
-
-        if accounts:
+        if gmb.account_list:
+            for account in gmb.account_list:
+                if account.get("name", None) and account.get("accountName", None):
+                    accounts.append(
+                        {
+                            "label": account.get("accountName"),
+                            "value": account.get("name")
+                        }
+                    )
             return accounts
         else:
             raise UserException("Authorized account does not have any Google My Business accounts with "
