@@ -134,7 +134,7 @@ class Component(ComponentBase):
         try:
             gmb.process(endpoints=["accounts"])
         except GMBException:
-            raise UserException("failed")
+            raise UserException("Failed to retrieved Google My Business accounts.")
 
         accounts = []
         for account in gmb.account_list:
@@ -146,7 +146,10 @@ class Component(ComponentBase):
                     }
                 )
 
-        return accounts
+        if accounts:
+            return accounts
+        else:
+            raise UserException("Authorized account does not have any linked Google My Business accounts.")
 
 
 """
