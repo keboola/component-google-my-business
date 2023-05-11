@@ -135,7 +135,7 @@ class Component(ComponentBase):
             access_token=oauth_token,
             data_folder_path=self.data_folder_path)
         try:
-            gmb.process(endpoints=["accounts"])
+            gmb.list_accounts()
         except GMBException:
             raise UserException("Failed to retrieved Google My Business accounts for which the authorized user has "
                                 "management rights.")
