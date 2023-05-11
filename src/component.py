@@ -50,6 +50,9 @@ class Component(ComponentBase):
 
         logging.info('Request Range: {} to {}'.format(start_date_str, end_date_str))
         accounts = params.get(KEY_ACCOUNTS, {})
+        if not accounts:
+            raise UserException("The authorized account has to have a linked My Google Business account with "
+                                "management rights and proper account selected in the component's Accounts parameter.")
 
         destination_params = params.get(KEY_GROUP_DESTINATION, {})
         incremental = destination_params.get(KEY_LOAD_TYPE) != 'full_load' if destination_params else False
@@ -134,7 +137,8 @@ class Component(ComponentBase):
         try:
             gmb.process(endpoints=["accounts"])
         except GMBException:
-            raise UserException("failed")
+            raise UserException("Failed to retrieved Google My Business accounts for which the authorized user has "
+                                "management rights.")
 
         accounts = []
         for account in gmb.account_list:
@@ -146,7 +150,11 @@ class Component(ComponentBase):
                     }
                 )
 
-        return accounts
+        if accounts:
+            return accounts
+        else:
+            raise UserException("Authorized account does not have any Google My Business accounts with "
+                                "management rights.")
 
 
 """
