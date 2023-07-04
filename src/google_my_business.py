@@ -483,7 +483,6 @@ class GoogleMyBusiness:
 
     def save_resulting_files(self):
         """Produces manifest and saves column names to statefile"""
-
         filenames = [f.name for f in os.scandir(self.temp_table_destination) if f.is_dir()]
 
         for file_name in filenames:
@@ -496,16 +495,17 @@ class GoogleMyBusiness:
             temp_dir = os.path.join(self.temp_table_destination, file_name)
             temp_files = self.list_json_files(temp_dir)
 
-            tgt_path = os.path.join(self.default_table_destination, file_name+".csv")
-            with ElasticDictWriter(tgt_path, fieldnames) as wr:
-                wr.writeheader()
-                for file in temp_files:
-                    with open(file, 'r') as f:
-                        data = json.load(f)
-                    wr.writerow(data)
+            if temp_files:
+                tgt_path = os.path.join(self.default_table_destination, file_name+".csv")
+                with ElasticDictWriter(tgt_path, fieldnames) as wr:
+                    wr.writeheader()
+                    for file in temp_files:
+                        with open(file, 'r') as f:
+                            data = json.load(f)
+                        wr.writerow(data)
 
-            self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
-            self.tables_columns[file_name] = wr.fieldnames
+                self.produce_manifest(file_name=file_name, primary_key=mapping[file_name])
+                self.tables_columns[file_name] = wr.fieldnames
 
     @staticmethod
     def list_json_files(target_dir):
