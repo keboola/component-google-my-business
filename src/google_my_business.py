@@ -125,11 +125,16 @@ class GoogleMyBusiness:
             raise GMBException(e)
 
     @staticmethod
-    def select_entries(list1, list_all):
+    def select_entries(selected_accounts, all_accounts):
         relevant_entries = []
-        for item in list_all:
-            if item.get("name", "") in list1:
+        for item in all_accounts:
+            if item.get("name", "") in selected_accounts:
                 relevant_entries.append(item)
+
+        if not relevant_entries:
+            raise GoogleMyBusinessException(f"Selected accounts {selected_accounts} are not in available accounts: "
+                                            f"{all_accounts}")
+
         return relevant_entries
 
     def process(self, endpoints=None):
@@ -234,7 +239,6 @@ class GoogleMyBusiness:
         }
 
         if nextPageToken:
-            logging.info("Got nextpagetoken")
             params['pageToken'] = nextPageToken
 
         # Get Account Lists
