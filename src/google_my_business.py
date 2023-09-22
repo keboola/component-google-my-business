@@ -258,7 +258,7 @@ class GoogleMyBusiness:
             self.list_accounts(nextPageToken=account_json['nextPageToken'])
 
         if not self.account_list:
-            raise GoogleMyBusinessException(f"No GMB accounts found for authorized user.")
+            raise GoogleMyBusinessException("No GMB accounts found for authorized user.")
 
     @backoff.on_exception(backoff.expo, GMBException, max_tries=5)
     def list_locations(self, account_id, nextPageToken=None):
