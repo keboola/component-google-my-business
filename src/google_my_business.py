@@ -122,6 +122,9 @@ class GoogleMyBusiness:
 
     @staticmethod
     def select_entries(list1, list_all):
+        print(list1)
+        print(list_all)
+        exit()
         relevant_entries = []
         for item in list_all:
             if item.get("name", "") in list1:
