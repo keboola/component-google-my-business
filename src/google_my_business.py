@@ -124,12 +124,11 @@ class GoogleMyBusiness:
     def select_entries(list1, list_all):
         relevant_entries = []
         for item in list_all:
-            if item['name'] in list1:
+            if item.get("name", "") in list1:
                 relevant_entries.append(item)
         return relevant_entries
 
     def process(self, endpoints=None):
-
         self.list_accounts()
         if self.selected_accounts:
             self.account_list = self.select_entries(self.selected_accounts, self.account_list)
