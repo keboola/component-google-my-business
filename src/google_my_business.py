@@ -17,6 +17,10 @@ AVAILABLE_DAILY_METRICS = ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRES
                            ]
 
 
+class GoogleMyBusinessException(Exception):
+    pass
+
+
 def get_date_from_string(date_string):
     """
     Extracts the year, month, and day from a string in the format "YYYY-MM-DDTHH:MM:SS.ffffffZ"
@@ -73,10 +77,6 @@ def flatten_dict(d, max_key_length=64):
     return flat_dict
 
 
-class GMBException(Exception):
-    pass
-
-
 def backoff_custom():
     delays = [15, 30, 45]
     for delay in delays:
@@ -115,21 +115,25 @@ class GoogleMyBusiness:
 
     def test_connection(self):
         try:
-            logging.info("hello")
             self.list_accounts()
         except Exception as e:
-            raise GMBException(e)
+            raise GoogleMyBusinessException(e)
 
     @staticmethod
-    def select_entries(list1, list_all):
+    def select_entries(selected_accounts, all_accounts):
+
         relevant_entries = []
-        for item in list_all:
-            if item['name'] in list1:
+        for item in all_accounts:
+            if item.get("name", "") in selected_accounts:
                 relevant_entries.append(item)
+
+        if not relevant_entries:
+            raise GoogleMyBusinessException(f"Selected accounts {selected_accounts} is/are not in available accounts: "
+                                            f"{all_accounts}")
+
         return relevant_entries
 
     def process(self, endpoints=None):
-
         self.list_accounts()
         if self.selected_accounts:
             self.account_list = self.select_entries(self.selected_accounts, self.account_list)
@@ -236,17 +240,21 @@ class GoogleMyBusiness:
         # Get Account Lists
         res_status, account_raw = self.get_request(account_url, params=params)
         if res_status != 200:
-            raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
+            raise GoogleMyBusinessException(f'The component cannot fetch list of GMB accounts, '
+                                            f'error: {account_raw.text}')
 
         account_json = account_raw.json()
-        self.account_list = account_json['accounts']
+        if 'accounts' in account_json:
+            self.account_list += account_json['accounts']
 
         # Looping for all the accounts
         if 'nextPageToken' in account_json:
-            self.account_list = self.account_list + \
-                                self.list_accounts(nextPageToken=account_json['nextPageToken'])
+            self.list_accounts(nextPageToken=account_json['nextPageToken'])
 
-    @backoff.on_exception(backoff.expo, GMBException, max_tries=5)
+        if not self.account_list:
+            raise GoogleMyBusinessException("No GMB accounts found for authorized user.")
+
+    @backoff.on_exception(backoff.expo, GoogleMyBusinessException, max_tries=5)
     def list_locations(self, account_id, nextPageToken=None):
         """
         Fetching all locations associated to the account_id
@@ -264,7 +272,7 @@ class GoogleMyBusiness:
         res_status, location_raw = self.get_request(
             location_url, params=params)
         if res_status != 200:
-            raise GMBException(f'Something wrong with location request. Response: {location_raw.text}')
+            raise GoogleMyBusinessException(f'Something wrong with location request. Response: {location_raw.text}')
         location_json = location_raw.json()
 
         # If the account has no locations under it
@@ -315,7 +323,8 @@ class GoogleMyBusiness:
                     logging.error(f"Cannot fetch daily metrics for location with id {location_id}, response: "
                                   f"{insights_raw.text}")
                     return {}
-                raise GMBException(f'Something wrong with report insight request. Response: {insights_raw.text}')
+                raise GoogleMyBusinessException(f'Something wrong with report insight request. '
+                                                f'Response: {insights_raw.text}')
 
             response = insights_raw.json()
             if 'timeSeries' in response:
@@ -347,7 +356,7 @@ class GoogleMyBusiness:
         # Get review for the location
         res_status, data_raw = self.get_request(url, params=params)
         if res_status != 200:
-            raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
+            raise GoogleMyBusinessException(f'Something wrong with request. Response: {data_raw.text}')
         data_json = data_raw.json()
         if 'reviews' in data_json:
             responses.extend(data_json['reviews'])
@@ -397,7 +406,7 @@ class GoogleMyBusiness:
 
         return responses
 
-    @backoff.on_exception(backoff.expo, GMBException, max_tries=20)
+    @backoff.on_exception(backoff.expo, GoogleMyBusinessException, max_tries=20)
     def list_media(self, location_id, account_id, nextPageToken=None):
         responses = []
 
@@ -411,9 +420,9 @@ class GoogleMyBusiness:
 
         res_status, data_raw = self.get_request(url, params=params)
         if res_status != 200:
-            raise GMBException(f'Something wrong with request. Response: {data_raw.text}')
+            raise GoogleMyBusinessException(f'Something wrong with request. Response: {data_raw.text}')
         if res_status == 503:
-            raise GMBException("Media service is unavailable at the moment.")
+            raise GoogleMyBusinessException("Media service is unavailable at the moment.")
 
         data_json = data_raw.json()
         if data_json:
