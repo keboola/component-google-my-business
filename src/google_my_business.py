@@ -241,9 +241,6 @@ class GoogleMyBusiness:
         account_json = account_raw.json()
         self.account_list = account_json['accounts']
 
-        print(self.account_list)
-        exit()
-
         # Looping for all the accounts
         if 'nextPageToken' in account_json:
             self.account_list = self.account_list + \
