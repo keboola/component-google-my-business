@@ -8,7 +8,7 @@ import shutil
 from keboola.component.base import ComponentBase, sync_action
 from keboola.component.exceptions import UserException
 
-from google_my_business import GoogleMyBusiness, GMBException
+from google_my_business import GoogleMyBusiness, GoogleMyBusinessException
 
 # configuration variables
 KEY_API_TOKEN = '#api_token'
@@ -75,7 +75,7 @@ class Component(ComponentBase):
         )
         try:
             gmb.process(endpoints=endpoints)
-        except GMBException as e:
+        except GoogleMyBusinessException as e:
             raise UserException(e)
 
         self.write_state_file(gmb.tables_columns)
@@ -136,7 +136,7 @@ class Component(ComponentBase):
             data_folder_path=self.data_folder_path)
         try:
             gmb.list_accounts()
-        except GMBException:
+        except GoogleMyBusinessException:
             raise UserException("Failed to retrieved Google My Business accounts for which the authorized user has "
                                 "management rights.")
 
