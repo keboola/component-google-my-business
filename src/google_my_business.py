@@ -244,7 +244,7 @@ class GoogleMyBusiness:
                                             f'error: {account_raw.text}')
 
         account_json = account_raw.json()
-        if 'accounts' in account_json and account_json['accounts'] is not None:
+        if 'accounts' in account_json:
             self.account_list += account_json['accounts']
 
         # Looping for all the accounts
