@@ -17,6 +17,10 @@ AVAILABLE_DAILY_METRICS = ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRES
                            ]
 
 
+class GoogleMyBusinessException(Exception):
+    pass
+
+
 def get_date_from_string(date_string):
     """
     Extracts the year, month, and day from a string in the format "YYYY-MM-DDTHH:MM:SS.ffffffZ"
@@ -245,6 +249,9 @@ class GoogleMyBusiness:
         # Looping for all the accounts
         if 'nextPageToken' in account_json:
             self.list_accounts(nextPageToken=account_json['nextPageToken'])
+
+        if not self.account_list:
+            raise GoogleMyBusinessException(f"No GMB accounts found for authorized user.")
 
     @backoff.on_exception(backoff.expo, GMBException, max_tries=5)
     def list_locations(self, account_id, nextPageToken=None):
