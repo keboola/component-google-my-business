@@ -126,6 +126,9 @@ class GoogleMyBusiness:
 
     @staticmethod
     def select_entries(selected_accounts, all_accounts):
+        print(selected_accounts)
+        print(all_accounts)
+
         relevant_entries = []
         for item in all_accounts:
             if item.get("name", "") in selected_accounts:
