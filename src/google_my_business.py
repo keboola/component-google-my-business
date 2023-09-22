@@ -122,9 +122,6 @@ class GoogleMyBusiness:
 
     @staticmethod
     def select_entries(list1, list_all):
-        print(list1)
-        print(list_all)
-        exit()
         relevant_entries = []
         for item in list_all:
             if item.get("name", "") in list1:
@@ -233,6 +230,7 @@ class GoogleMyBusiness:
         }
 
         if nextPageToken:
+            logging.info("Got nextpagetoken")
             params['pageToken'] = nextPageToken
 
         # Get Account Lists
@@ -241,12 +239,12 @@ class GoogleMyBusiness:
             raise GMBException(f'The component cannot fetch list of GMB accounts, error: {account_raw.text}')
 
         account_json = account_raw.json()
-        self.account_list = account_json['accounts']
+        if 'accounts' in account_json:
+            self.account_list += account_json['accounts']
 
         # Looping for all the accounts
         if 'nextPageToken' in account_json:
-            self.account_list = self.account_list + \
-                                self.list_accounts(nextPageToken=account_json['nextPageToken'])
+            self.list_accounts(nextPageToken=account_json['nextPageToken'])
 
     @backoff.on_exception(backoff.expo, GMBException, max_tries=5)
     def list_locations(self, account_id, nextPageToken=None):
