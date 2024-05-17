@@ -281,6 +281,9 @@ class GoogleMyBusiness:
         else:
             out_location_list = location_json['locations']
 
+        for location in out_location_list:
+            location['account_id'] = account_id
+
         # Looping for all the locations
         if 'nextPageToken' in location_json:
             out_location_list = out_location_list + \
