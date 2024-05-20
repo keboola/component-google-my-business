@@ -1,4 +1,4 @@
-https://bitbucket.org/kds_consulting_team/keboola-python-util-lib/get/0.2.0.zip#egg=kbc
+https://bitbucket.org/kds_consulting_team/keboola-python-util-lib/get/0.5.2.zip#egg=kbc
 keboola.component==1.4.0
 keboola.csvwriter
 mock
