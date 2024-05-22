@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 import uuid
 import backoff
+from ratelimit import limits, sleep_and_retry
 
 from keboola.csvwriter import ElasticDictWriter
 
@@ -78,7 +79,7 @@ def flatten_dict(d, max_key_length=64):
 
 
 def backoff_custom():
-    delays = [15, 30, 45]
+    delays = [15, 30, 45, 61, 61, 61, 61]
     for delay in delays:
         yield delay
 
@@ -210,7 +211,9 @@ class GoogleMyBusiness:
 
         self.save_resulting_files()
 
-    @backoff.on_exception(backoff_custom, Exception, max_tries=3)
+    @sleep_and_retry
+    @limits(calls=290, period=61)
+    @backoff.on_exception(backoff_custom, Exception, max_tries=7)
     def get_request(self, url, headers=None, params=None):
         res = self.session.get(url=url, headers=headers, params=params)
         if res.status_code == 429:
