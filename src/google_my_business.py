@@ -11,6 +11,8 @@ from keboola.csvwriter import ElasticDictWriter
 
 from definitions import mapping
 
+PAGE_SIZE = 50
+
 AVAILABLE_DAILY_METRICS = ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
                            "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
                            "BUSINESS_CONVERSATIONS", "BUSINESS_DIRECTION_REQUESTS", "CALL_CLICKS",
@@ -354,7 +356,8 @@ class GoogleMyBusiness:
 
         url = self.base_url + "/" + account_id + "/" + location_id + "/reviews"
         params = {
-            'access_token': self.access_token
+            'access_token': self.access_token,
+            'pageSize': PAGE_SIZE
         }
         if nextPageToken:
             params['pageToken'] = nextPageToken
