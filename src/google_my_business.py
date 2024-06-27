@@ -5,10 +5,13 @@ import logging
 from datetime import datetime
 import uuid
 import backoff
+from ratelimit import limits, sleep_and_retry
 
 from keboola.csvwriter import ElasticDictWriter
 
 from definitions import mapping
+
+PAGE_SIZE = 50
 
 AVAILABLE_DAILY_METRICS = ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
                            "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
@@ -78,7 +81,7 @@ def flatten_dict(d, max_key_length=64):
 
 
 def backoff_custom():
-    delays = [15, 30, 45]
+    delays = [15, 30, 45, 61, 61, 61, 61]
     for delay in delays:
         yield delay
 
@@ -210,7 +213,9 @@ class GoogleMyBusiness:
 
         self.save_resulting_files()
 
-    @backoff.on_exception(backoff_custom, Exception, max_tries=3)
+    @sleep_and_retry
+    @limits(calls=290, period=61)
+    @backoff.on_exception(backoff_custom, Exception, max_tries=7)
     def get_request(self, url, headers=None, params=None):
         res = self.session.get(url=url, headers=headers, params=params)
         if res.status_code == 429:
@@ -351,7 +356,8 @@ class GoogleMyBusiness:
 
         url = self.base_url + "/" + account_id + "/" + location_id + "/reviews"
         params = {
-            'access_token': self.access_token
+            'access_token': self.access_token,
+            'pageSize': PAGE_SIZE
         }
         if nextPageToken:
             params['pageToken'] = nextPageToken
