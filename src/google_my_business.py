@@ -1,23 +1,31 @@
-import os
 import json
-import requests
 import logging
-from datetime import datetime
+import os
 import uuid
-import backoff
-from ratelimit import limits, sleep_and_retry
+from datetime import datetime
 
+import backoff
+import requests
 from keboola.csvwriter import ElasticDictWriter
+from ratelimit import limits, sleep_and_retry
 
 from definitions import mapping
 
 PAGE_SIZE = 50
 
-AVAILABLE_DAILY_METRICS = ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
-                           "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
-                           "BUSINESS_CONVERSATIONS", "BUSINESS_DIRECTION_REQUESTS", "CALL_CLICKS",
-                           "WEBSITE_CLICKS", "BUSINESS_BOOKINGS", "BUSINESS_FOOD_ORDERS", "BUSINESS_FOOD_MENU_CLICKS"
-                           ]
+AVAILABLE_DAILY_METRICS = [
+    "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
+    "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+    "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+    "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+    "BUSINESS_CONVERSATIONS",
+    "BUSINESS_DIRECTION_REQUESTS",
+    "CALL_CLICKS",
+    "WEBSITE_CLICKS",
+    "BUSINESS_BOOKINGS",
+    "BUSINESS_FOOD_ORDERS",
+    "BUSINESS_FOOD_MENU_CLICKS",
+]
 
 
 class GoogleMyBusinessException(Exception):
@@ -82,19 +90,26 @@ def flatten_dict(d, max_key_length=64):
 
 def backoff_custom():
     delays = [15, 30, 45, 61, 61, 61, 61]
-    for delay in delays:
-        yield delay
+    yield from delays
 
 
 class GoogleMyBusiness:
-    def __init__(self, access_token, data_folder_path, default_columns=None, start_timestamp=None, end_timestamp=None,
-                 accounts=None, incremental=True):
+    def __init__(
+        self,
+        access_token,
+        data_folder_path,
+        default_columns=None,
+        start_timestamp=None,
+        end_timestamp=None,
+        accounts=None,
+        incremental=True,
+    ):
         if default_columns is None:
             default_columns = []
         self.output_columns = None
         self.access_token = access_token
         self.incremental = incremental
-        self.base_url = 'https://mybusiness.googleapis.com/v4'
+        self.base_url = "https://mybusiness.googleapis.com/v4"
         self.base_url_v1 = "https://mybusiness.googleapis.com/v1"
         self.base_url_profile_performance = "https://businessprofileperformance.googleapis.com/v1"
         self.base_url_quanda = "https://mybusinessqanda.googleapis.com/v1"
@@ -131,8 +146,9 @@ class GoogleMyBusiness:
                 relevant_entries.append(item)
 
         if not relevant_entries:
-            raise GoogleMyBusinessException(f"Selected accounts {selected_accounts} is/are not in available accounts: "
-                                            f"{all_accounts}")
+            raise GoogleMyBusinessException(
+                f"Selected accounts {selected_accounts} is/are not in available accounts: {all_accounts}"
+            )
 
         return relevant_entries
 
@@ -141,47 +157,39 @@ class GoogleMyBusiness:
         if self.selected_accounts:
             self.account_list = self.select_entries(self.selected_accounts, self.account_list)
 
-        logging.info(f'Component will process following accounts: {self.account_list}')
+        logging.info(f"Component will process following accounts: {self.account_list}")
 
         # Outputting all the accounts found
-        logging.info('Outputting Accounts...')
-        self.create_temp_files(
-            data_in=self.account_list,
-            file_name='accounts'
-        )
+        logging.info("Outputting Accounts...")
+        self.create_temp_files(data_in=self.account_list, file_name="accounts")
 
         # Finding all the accounts available for the authorized account
         for account in self.account_list:
-            account_id = account['name']
+            account_id = account["name"]
             # Fetching all the locations available for the entered account
             all_locations = self.list_locations(account_id=account_id)
-            logging.info('Locations found in Account [{}] - [{}]'.format(
-                account['accountName'], len(all_locations)))
-            logging.info('Outputting Locations...')
-            self.create_temp_files(
-                data_in=all_locations,
-                file_name='locations'
-            )
+            logging.info("Locations found in Account [{}] - [{}]".format(account["accountName"], len(all_locations)))
+            logging.info("Outputting Locations...")
+            self.create_temp_files(data_in=all_locations, file_name="locations")
 
             if len(all_locations) == 0:
-                logging.error(f'There is no location info under the authorized '
-                              f'account [{account["accountName"]}].')
+                logging.error(f"There is no location info under the authorized account [{account['accountName']}].")
                 continue
 
-            if 'dailyMetrics' in endpoints:
+            if "dailyMetrics" in endpoints:
                 for location in all_locations:
-                    location_path = location['name']
-                    location_title = location['title']
+                    location_path = location["name"]
+                    location_title = location["title"]
                     location_id = location_path.replace("locations/", "")
                     logging.info(f"Processing endpoint dailyMetrics for {location_title}.")
                     self.daily_metrics[location_id] = self.list_daily_metrics(location_id=location_path)
                 self.daily_metrics_parser(data_in=self.daily_metrics)
             self.daily_metrics = {}
 
-            if 'reviews' in endpoints:
+            if "reviews" in endpoints:
                 for location in all_locations:
-                    location_path = location['name']
-                    location_title = location['title']
+                    location_path = location["name"]
+                    location_title = location["title"]
                     logging.info(f"Processing reviews for {location_title}.")
                     reviews = self.list_reviews(account_id=account_id, location_id=location_path)
                     for review in reviews:
@@ -189,10 +197,10 @@ class GoogleMyBusiness:
                 self.create_temp_files(data_in=self.reviews, file_name="reviews")
             self.reviews = []
 
-            if 'media' in endpoints:
+            if "media" in endpoints:
                 for location in all_locations:
-                    location_path = location['name']
-                    location_title = location['title']
+                    location_path = location["name"]
+                    location_title = location["title"]
                     logging.info(f"Processing media for {location_title}.")
                     media = self.list_media(location_id=location_path, account_id=account_id)
                     for medium in media:
@@ -200,10 +208,10 @@ class GoogleMyBusiness:
                 self.create_temp_files(data_in=self.media, file_name="media")
             self.media = []
 
-            if 'questions' in endpoints:
+            if "questions" in endpoints:
                 for location in all_locations:
-                    location_path = location['name']
-                    location_title = location['title']
+                    location_path = location["name"]
+                    location_title = location["title"]
                     logging.info(f"Processing questions for {location_title}.")
                     questions = self.list_questions(location_id=location_path)
                     for question in questions:
@@ -232,29 +240,30 @@ class GoogleMyBusiness:
         """
         Fetching all the accounts available in the authorized Google account
         """
-        account_url = '{}/accounts'.format(self.base_url_v1)
+        account_url = f"{self.base_url_v1}/accounts"
 
         params = {
-            'access_token': self.access_token
+            "access_token": self.access_token
             # 'Authorization': 'Bearer {}'.format(self.access_token)
         }
 
         if nextPageToken:
-            params['pageToken'] = nextPageToken
+            params["pageToken"] = nextPageToken
 
         # Get Account Lists
         res_status, account_raw = self.get_request(account_url, params=params)
         if res_status != 200:
-            raise GoogleMyBusinessException(f'The component cannot fetch list of GMB accounts, '
-                                            f'error: {account_raw.text}')
+            raise GoogleMyBusinessException(
+                f"The component cannot fetch list of GMB accounts, error: {account_raw.text}"
+            )
 
         account_json = account_raw.json()
-        if 'accounts' in account_json:
-            self.account_list += account_json['accounts']
+        if "accounts" in account_json:
+            self.account_list += account_json["accounts"]
 
         # Looping for all the accounts
-        if 'nextPageToken' in account_json:
-            self.list_accounts(nextPageToken=account_json['nextPageToken'])
+        if "nextPageToken" in account_json:
+            self.list_accounts(nextPageToken=account_json["nextPageToken"])
 
         if not self.account_list:
             raise GoogleMyBusinessException("No GMB accounts found for authorized user.")
@@ -265,35 +274,34 @@ class GoogleMyBusiness:
         Fetching all locations associated to the account_id
         """
 
-        location_url = '{}/{}/locations'.format(self.base_url_v1, account_id)
+        location_url = f"{self.base_url_v1}/{account_id}/locations"
         params = {
-            'access_token': self.access_token,
-            'readMask': 'name,languageCode,storeCode,title,phoneNumbers,categories,storefrontAddress,websiteUri,'
-                        'regularHours,specialHours,serviceArea,latlng,openInfo,metadata,profile,relationshipData'
+            "access_token": self.access_token,
+            "readMask": "name,languageCode,storeCode,title,phoneNumbers,categories,storefrontAddress,websiteUri,"
+            "regularHours,specialHours,serviceArea,latlng,openInfo,metadata,profile,relationshipData",
         }
         if nextPageToken:
-            params['pageToken'] = nextPageToken
+            params["pageToken"] = nextPageToken
 
-        res_status, location_raw = self.get_request(
-            location_url, params=params)
+        res_status, location_raw = self.get_request(location_url, params=params)
         if res_status != 200:
-            raise GoogleMyBusinessException(f'Something wrong with location request. Response: {location_raw.text}')
+            raise GoogleMyBusinessException(f"Something wrong with location request. Response: {location_raw.text}")
         location_json = location_raw.json()
 
         # If the account has no locations under it
-        if 'locations' not in location_json:
+        if "locations" not in location_json:
             out_location_list = []
         else:
-            out_location_list = location_json['locations']
+            out_location_list = location_json["locations"]
 
         for location in out_location_list:
-            location['account_id'] = account_id
+            location["account_id"] = account_id
 
         # Looping for all the locations
-        if 'nextPageToken' in location_json:
-            out_location_list = out_location_list + \
-                                self.list_locations(account_id=account_id,
-                                                    nextPageToken=location_json['nextPageToken'])
+        if "nextPageToken" in location_json:
+            out_location_list = out_location_list + self.list_locations(
+                account_id=account_id, nextPageToken=location_json["nextPageToken"]
+            )
 
         return out_location_list
 
@@ -319,29 +327,30 @@ class GoogleMyBusiness:
                 "dailyRange.endDate.day": end_day,
             }
 
-            header = {
-                'Content-type': 'application/json',
-                'Authorization': 'Bearer {}'.format(self.access_token)
-            }
+            header = {"Content-type": "application/json", "Authorization": f"Bearer {self.access_token}"}
 
             res_status, insights_raw = self.get_request(url=insight_url, headers=header, params=params)
 
             if res_status != 200:
                 if res_status == 403:
-                    logging.error(f"Cannot fetch daily metrics for location with id {location_id}, response: "
-                                  f"{insights_raw.text}")
+                    logging.error(
+                        f"Cannot fetch daily metrics for location with id {location_id}, response: {insights_raw.text}"
+                    )
                     return {}
-                raise GoogleMyBusinessException(f'Something wrong with report insight request. '
-                                                f'Response: {insights_raw.text}')
+                raise GoogleMyBusinessException(
+                    f"Something wrong with report insight request. Response: {insights_raw.text}"
+                )
 
             response = insights_raw.json()
-            if 'timeSeries' in response:
-                time_series = response['timeSeries']['datedValues']
+            if "timeSeries" in response:
+                time_series = response["timeSeries"]["datedValues"]
 
                 for dated_value in time_series:
-                    date = f"{dated_value['date']['year']}-{dated_value['date']['month']:02d}-" \
-                           f"{dated_value['date']['day']:02d}"
-                    value = int(dated_value.get('value', '0'))
+                    date = (
+                        f"{dated_value['date']['year']}-{dated_value['date']['month']:02d}-"
+                        f"{dated_value['date']['day']:02d}"
+                    )
+                    value = int(dated_value.get("value", "0"))
                     if date not in parsed_values:
                         parsed_values[date] = {}
                     parsed_values[date][metric] = value
@@ -355,30 +364,28 @@ class GoogleMyBusiness:
         responses = []
 
         url = self.base_url + "/" + account_id + "/" + location_id + "/reviews"
-        params = {
-            'access_token': self.access_token,
-            'pageSize': PAGE_SIZE
-        }
+        params = {"access_token": self.access_token, "pageSize": PAGE_SIZE}
         if nextPageToken:
-            params['pageToken'] = nextPageToken
+            params["pageToken"] = nextPageToken
 
         # Get review for the location
         res_status, data_raw = self.get_request(url, params=params)
         if res_status != 200:
-            raise GoogleMyBusinessException(f'Something wrong with request. Response: {data_raw.text}')
+            raise GoogleMyBusinessException(f"Something wrong with request. Response: {data_raw.text}")
         data_json = data_raw.json()
-        if 'reviews' in data_json:
-            responses.extend(data_json['reviews'])
+        if "reviews" in data_json:
+            responses.extend(data_json["reviews"])
 
-            if 'nextPageToken' in data_json:
-                responses.extend(self.list_reviews(
-                    account_id=account_id,
-                    location_id=location_id,
-                    nextPageToken=data_json['nextPageToken']))
+            if "nextPageToken" in data_json:
+                responses.extend(
+                    self.list_reviews(
+                        account_id=account_id, location_id=location_id, nextPageToken=data_json["nextPageToken"]
+                    )
+                )
 
             return responses
         else:
-            logging.warning(f'Reviews for location with id {location_id} not found in response: {data_raw.text}')
+            logging.warning(f"Reviews for location with id {location_id} not found in response: {data_raw.text}")
             return []
 
     def list_questions(self, location_id, nextPageToken=None):
@@ -386,11 +393,9 @@ class GoogleMyBusiness:
 
         url = self.base_url_quanda + "/" + location_id + "/questions"
 
-        params = {
-            'access_token': self.access_token
-        }
+        params = {"access_token": self.access_token}
         if nextPageToken:
-            params['pageToken'] = nextPageToken
+            params["pageToken"] = nextPageToken
 
         # Get review for the location
         res_status, data_raw = self.get_request(url, params=params)
@@ -399,17 +404,16 @@ class GoogleMyBusiness:
                 if data_raw.json()["error"]["details"][0]["reason"] == "UNVERIFIED_LOCATION":
                     logging.warning(f"Location with id {location_id} is unverified. Cannot fetch questions.")
             else:
-                logging.warning(f"Cannot fetch questions for location with id {location_id}. Received response: "
-                                f"{data_raw.text}")
+                logging.warning(
+                    f"Cannot fetch questions for location with id {location_id}. Received response: {data_raw.text}"
+                )
             return []
 
         data_json = data_raw.json()
         if data_json.get("questions", None):
             responses.extend(data_json["questions"])
-            if 'nextPageToken' in data_json:
-                responses.extend(self.list_questions(
-                    location_id=location_id,
-                    nextPageToken=data_json['nextPageToken']))
+            if "nextPageToken" in data_json:
+                responses.extend(self.list_questions(location_id=location_id, nextPageToken=data_json["nextPageToken"]))
         else:
             logging.info(f"There are no questions for {location_id}")
 
@@ -421,26 +425,25 @@ class GoogleMyBusiness:
 
         url = self.base_url + "/" + account_id + "/" + location_id + "/media"
 
-        params = {
-            'access_token': self.access_token
-        }
+        params = {"access_token": self.access_token}
         if nextPageToken:
-            params['pageToken'] = nextPageToken
+            params["pageToken"] = nextPageToken
 
         res_status, data_raw = self.get_request(url, params=params)
         if res_status != 200:
-            raise GoogleMyBusinessException(f'Something wrong with request. Response: {data_raw.text}')
+            raise GoogleMyBusinessException(f"Something wrong with request. Response: {data_raw.text}")
         if res_status == 503:
             raise GoogleMyBusinessException("Media service is unavailable at the moment.")
 
         data_json = data_raw.json()
         if data_json:
-            responses.extend(data_json['mediaItems'])
-            if 'nextPageToken' in data_json:
-                responses.extend(self.list_media(
-                    location_id=location_id,
-                    account_id=account_id,
-                    nextPageToken=data_json['nextPageToken']))
+            responses.extend(data_json["mediaItems"])
+            if "nextPageToken" in data_json:
+                responses.extend(
+                    self.list_media(
+                        location_id=location_id, account_id=account_id, nextPageToken=data_json["nextPageToken"]
+                    )
+                )
         else:
             logging.info(f"There are no media for {location_id}")
 
@@ -456,8 +459,8 @@ class GoogleMyBusiness:
 
         if data_in:
             for row in data_in:
-                filename = os.path.join(file_output_destination, str(uuid.uuid4())+".json")
-                with open(filename, 'w') as outfile:
+                filename = os.path.join(file_output_destination, str(uuid.uuid4()) + ".json")
+                with open(filename, "w") as outfile:
                     json.dump(flatten_dict(row), outfile)
         else:
             logging.warning(f"File {file_name} is empty. Results will not be stored.")
@@ -467,15 +470,12 @@ class GoogleMyBusiness:
         Dummy function for returning manifest
         """
 
-        file = '{}{}.csv.manifest'.format(self.default_table_destination, file_name)
+        file = f"{self.default_table_destination}{file_name}.csv.manifest"
 
-        manifest = {
-            'incremental': self.incremental,
-            'primary_key': primary_key
-        }
+        manifest = {"incremental": self.incremental, "primary_key": primary_key}
 
         try:
-            with open(file, 'w') as file_out:
+            with open(file, "w") as file_out:
                 json.dump(manifest, file_out)
         except Exception as e:
             logging.error("Could not produce output file manifest.")
@@ -490,21 +490,15 @@ class GoogleMyBusiness:
         for location_id, date_data in data_in.items():
             for date, metrics in date_data.items():
                 for metric, value in metrics.items():
-                    data_out.append({
-                        "location_id": location_id,
-                        "date": date,
-                        "metric": metric,
-                        "value": value
-                    })
+                    data_out.append({"location_id": location_id, "date": date, "metric": metric, "value": value})
 
-        self.create_temp_files('daily_metrics', data_out)
+        self.create_temp_files("daily_metrics", data_out)
 
     def save_resulting_files(self):
         """Produces manifest and saves column names to statefile"""
         filenames = [f.name for f in os.scandir(self.temp_table_destination) if f.is_dir()]
 
         for file_name in filenames:
-
             if self.tables_columns.get(file_name, {}):
                 fieldnames = self.tables_columns.get(file_name)
             else:
@@ -514,11 +508,11 @@ class GoogleMyBusiness:
             temp_files = self.list_json_files(temp_dir)
 
             if temp_files:
-                tgt_path = os.path.join(self.default_table_destination, file_name+".csv")
+                tgt_path = os.path.join(self.default_table_destination, file_name + ".csv")
                 with ElasticDictWriter(tgt_path, fieldnames) as wr:
                     wr.writeheader()
                     for file in temp_files:
-                        with open(file, 'r') as f:
+                        with open(file) as f:
                             data = json.load(f)
                         wr.writerow(data)
 
@@ -529,6 +523,6 @@ class GoogleMyBusiness:
     def list_json_files(target_dir):
         json_files = []
         for filename in os.listdir(target_dir):
-            if filename.endswith('.json'):
+            if filename.endswith(".json"):
                 json_files.append(os.path.join(target_dir, filename))
         return json_files
