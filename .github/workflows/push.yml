@@ -18,4 +18,5 @@ jobs:
       vendor: kds-team
       test_build_target: test
       docker_build_target: production
+      kbc_developerportal_username: ${{ secrets.KBC_DEVELOPERPORTAL_USERNAME }}
     secrets: inherit
