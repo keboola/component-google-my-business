@@ -1,0 +1,26 @@
+[project]
+name = "component-google-my-business"
+version = "0.1.0"
+description = "Keboola Google My Business extractor"
+requires-python = "~=3.13.0"
+dependencies = [
+    "backoff>=2.2.1",
+    "keboola-component>=1.10.0",
+    "keboola-csvwriter>=1.0.1",
+    "ratelimit>=2.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "mock>=5.2.0",
+    "pytest>=9.0.3",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+extend-select = [
+    "I",   # isort – import sorting
+    "UP",  # pyupgrade – modern Python syntax
+]
