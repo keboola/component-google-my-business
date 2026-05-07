@@ -39,9 +39,17 @@ class Component(ComponentBase):
             raise UserException("Please select an endpoint.")
 
         # Validating input date parameters
-        start_date_str = params["request_range"].get("start_date", "7 days ago")
-        end_date_str = params["request_range"].get("end_date", "today")
+        start_date_str = params["request_range"].get("start_date", "7 days ago") or "7 days ago"
+        end_date_str = params["request_range"].get("end_date", "today") or "today"
         start_date_form, end_date_form = dateparser.parse(start_date_str), dateparser.parse(end_date_str)
+        if not start_date_form:
+            raise UserException(
+                f"Unable to parse start date: '{start_date_str}'. Please provide a valid date in [Request Range]."
+            )
+        if not end_date_form:
+            raise UserException(
+                f"Unable to parse end date: '{end_date_str}'. Please provide a valid date in [Request Range]."
+            )
         if start_date_form > end_date_form:
             raise UserException("Start Date cannot exceed End Date. Please re-enter [Request Range].")
         start_date_str = start_date_form.strftime("%Y-%m-%dT00:00:00.000000Z")
