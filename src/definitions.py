@@ -1,6 +1,6 @@
 mapping = {
     "accounts": ["name"],
-    "locations": ["name"],
+    "locations": ["name", "account_id"],
     "reviews": ["reviewId"],
     "media": [],
     "questions": ["name"],
