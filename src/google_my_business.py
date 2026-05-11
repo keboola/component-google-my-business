@@ -163,12 +163,18 @@ class GoogleMyBusiness:
         logging.info("Outputting Accounts...")
         self.create_temp_files(data_in=self.account_list, file_name="accounts")
 
+        # Track locations already processed for per-location endpoints so we
+        # don't re-fetch the same location's reviews/media/questions/metrics
+        # when it appears under multiple accounts.
+        seen_location_names = set()
+
         # Finding all the accounts available for the authorized account
         for account in self.account_list:
             account_id = account["name"]
             # Fetching all the locations available for the entered account
             all_locations = self.list_locations(account_id=account_id)
             logging.info("Locations found in Account [{}] - [{}]".format(account["accountName"], len(all_locations)))
+
             logging.info("Outputting Locations...")
             self.create_temp_files(data_in=all_locations, file_name="locations")
 
@@ -176,8 +182,17 @@ class GoogleMyBusiness:
                 logging.error(f"There is no location info under the authorized account [{account['accountName']}].")
                 continue
 
+            # For per-location endpoint calls, dedupe by location name across
+            # accounts: these endpoints return identical data per location
+            # regardless of account context, so re-fetching wastes API calls.
+            locations_for_endpoints = []
+            for loc in all_locations:
+                if loc["name"] not in seen_location_names:
+                    seen_location_names.add(loc["name"])
+                    locations_for_endpoints.append(loc)
+
             if "dailyMetrics" in endpoints:
-                for location in all_locations:
+                for location in locations_for_endpoints:
                     location_path = location["name"]
                     location_title = location["title"]
                     location_id = location_path.replace("locations/", "")
@@ -187,7 +202,7 @@ class GoogleMyBusiness:
             self.daily_metrics = {}
 
             if "reviews" in endpoints:
-                for location in all_locations:
+                for location in locations_for_endpoints:
                     location_path = location["name"]
                     location_title = location["title"]
                     logging.info(f"Processing reviews for {location_title}.")
@@ -198,7 +213,7 @@ class GoogleMyBusiness:
             self.reviews = []
 
             if "media" in endpoints:
-                for location in all_locations:
+                for location in locations_for_endpoints:
                     location_path = location["name"]
                     location_title = location["title"]
                     logging.info(f"Processing media for {location_title}.")
@@ -209,7 +224,7 @@ class GoogleMyBusiness:
             self.media = []
 
             if "questions" in endpoints:
-                for location in all_locations:
+                for location in locations_for_endpoints:
                     location_path = location["name"]
                     location_title = location["title"]
                     logging.info(f"Processing questions for {location_title}.")
