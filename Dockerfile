@@ -12,7 +12,7 @@ COPY scripts/ scripts/
 FROM base AS test
 RUN uv sync --all-groups --frozen
 COPY tests/ tests/
-RUN uv run ruff check src/ tests/
+RUN uv run ruff check .
 CMD ["uv", "run", "pytest", "tests/", "-v"]
 
 FROM base AS production
