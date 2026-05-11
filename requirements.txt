@@ -1,9 +1,0 @@
-https://bitbucket.org/kds_consulting_team/keboola-python-util-lib/get/0.5.2.zip#egg=kbc
-keboola.component==1.4.0
-keboola.csvwriter
-mock
-freezegun
-pandas==1.4.3
-regex==2019.11.1
-backoff==2.2.1
-ratelimit==2.2.1

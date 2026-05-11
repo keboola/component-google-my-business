@@ -7,6 +7,9 @@ example/.pydevproject
 .DS_Store
 
 # kbc datafolder
-data/
+/data
 tmp/
 venv/
+.venv/
+
+*.egg-info/
