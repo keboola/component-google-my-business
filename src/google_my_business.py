@@ -90,7 +90,8 @@ def flatten_dict(d, max_key_length=64):
 
 def backoff_custom():
     delays = [15, 30, 45, 61, 61, 61, 61]
-    yield from delays
+    for delay in delays:  # noqa: UP028 – yield from delegates .send() to list_iterator which lacks it
+        yield delay
 
 
 class GoogleMyBusiness:
