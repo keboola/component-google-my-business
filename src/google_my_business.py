@@ -245,8 +245,7 @@ class GoogleMyBusiness:
         if res.status_code == 429:
             # Raise an exception to trigger the retry logic
             raise Exception("Rate limit exceeded. Retrying...")
-        elif res.status_code in [400, 403, 500]:
-            # Ignore error 403 and return the status code and response object
+        elif res.status_code in [400, 401, 403, 404, 500, 501]:
             return res.status_code, res
         elif res.status_code != 200:
             raise Exception(f"Request failed with status code {res.status_code}")
