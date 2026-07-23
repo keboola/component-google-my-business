@@ -32,6 +32,21 @@ class GoogleMyBusinessException(Exception):
     pass
 
 
+class GoogleMyBusinessRequestError(Exception):
+    """Raised when an HTTP request returns an unexpected status code that the existing
+    retry logic in ``get_request`` could not recover from.
+
+    Deliberately NOT a subclass of ``GoogleMyBusinessException``: the per-endpoint
+    ``backoff.on_exception(..., GoogleMyBusinessException, ...)`` decorators (on
+    ``list_locations`` and ``list_media``) must keep ignoring it, so the retry
+    behaviour stays byte-for-byte identical to when a bare ``Exception`` was raised
+    here. It exists only so the component boundary can turn what was previously an
+    opaque internal error (exit 2) into a clear ``UserException`` (exit 1).
+    """
+
+    pass
+
+
 def get_date_from_string(date_string):
     """
     Extracts the year, month, and day from a string in the format "YYYY-MM-DDTHH:MM:SS.ffffffZ"
@@ -248,7 +263,7 @@ class GoogleMyBusiness:
         elif res.status_code in [400, 401, 403, 404, 500, 501]:
             return res.status_code, res
         elif res.status_code != 200:
-            raise Exception(f"Request failed with status code {res.status_code}")
+            raise GoogleMyBusinessRequestError(f"Request failed with status code {res.status_code}")
         return res.status_code, res
 
     def list_accounts(self, nextPageToken=None):
