@@ -8,7 +8,7 @@ import requests
 from keboola.component.base import ComponentBase, sync_action
 from keboola.component.exceptions import UserException
 
-from google_my_business import GoogleMyBusiness, GoogleMyBusinessException
+from google_my_business import GoogleMyBusiness, GoogleMyBusinessException, GoogleMyBusinessRequestError
 
 # configuration variables
 KEY_API_TOKEN = "#api_token"
@@ -85,6 +85,12 @@ class Component(ComponentBase):
         try:
             gmb.process(endpoints=endpoints)
         except GoogleMyBusinessException as e:
+            raise UserException(e)
+        except GoogleMyBusinessRequestError as e:
+            # A non-200 HTTP status that the existing retries could not recover from
+            # previously escaped as a bare Exception (opaque internal error, exit 2).
+            # Surface it as a UserException (exit 1) with the same message, matching how
+            # every other non-200 in this component is already reported to the user.
             raise UserException(e)
 
         self.write_state_file(gmb.tables_columns)
